@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css"; 
 import Header from "@/components/Header";
-import Footer from "@/components/Footer"; // <--- Add this import
+import Footer from "@/components/Footer";
 
 export const dynamic = "force-dynamic";
 
@@ -33,12 +33,12 @@ export default function RootLayout({
       <body className="bg-white text-gray-900 antialiased flex flex-col min-h-screen">
         <Header />
 
-        {/* Main content wrapper with flex-grow to push footer to bottom */}
-        <div className="flex-grow">
+        {/* Updated main wrapper: flex-grow pushes the footer down, 
+            and flex flex-col allows child pages to use flex-1 to stretch their backgrounds */}
+        <main className="flex-grow flex flex-col w-full">
           {children}
-        </div>
+        </main>
 
-        {/* Global Footer injected here */}
         <Footer />
       </body>
     </html>
