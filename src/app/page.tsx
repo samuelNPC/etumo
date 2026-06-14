@@ -1,33 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase"; // Added auth import
 import { collection, addDoc } from "firebase/firestore";
+import { onAuthStateChanged, User } from "firebase/auth"; // Added auth listener
 import AuthModal from "@/components/AuthModal";
 
 export default function Home() {
   const router = useRouter();
-  
-  // App Mode State starts as null so no form is shown until they pick a checkbox
+
+  // Track Logged In User
+  const [user, setUser] = useState<User | null>(null);
+
+  // App Mode State
   const [inputMode, setInputMode] = useState<"generate" | "custom" | null>(null);
-  
+
   // Form States
   const [course, setCourse] = useState("");
   const [interest, setInterest] = useState("");
   const [customTopic, setCustomTopic] = useState("");
   const [topics, setTopics] = useState<string[]>([]);
-  
+
   // UI States
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Auth Modal & Progression States
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [initializing, setInitializing] = useState(false);
 
-  // 1. Handle AI Generation
+  // 1. Listen for user session on mount
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Handle AI Generation
   const generateTopics = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -42,7 +54,7 @@ export default function Home() {
       });
 
       const data = await response.json();
-      
+
       if (!response.ok || data.error) {
         setError(data.error || `Server Error: ${response.status}`);
       } else if (data.topics) {
@@ -55,14 +67,21 @@ export default function Home() {
     }
   };
 
-  // 2. Lock in the topic and trigger the Auth Modal
-  const handleLockTopic = (selectedTopic: string) => {
+  // 3. Lock in the topic - bypass AuthModal if already logged in!
+  const handleLockTopic = async (selectedTopic: string) => {
     localStorage.setItem("etumo_pending_topic", selectedTopic);
     localStorage.setItem("etumo_pending_course", course || "General");
-    setShowAuthModal(true);
+    
+    if (user) {
+      // User is already logged in, skip the modal and go straight to workspace creation
+      await handleInitializeWorkspace();
+    } else {
+      // User is not logged in, show the auth modal
+      setShowAuthModal(true);
+    }
   };
 
-  // 3. Write to database and push to workspace
+  // 4. Write to database and push to workspace
   const handleInitializeWorkspace = async () => {
     setInitializing(true);
     try {
@@ -75,6 +94,8 @@ export default function Home() {
         faculty: "General",
         progress: 10,
         content: {},
+        // Attach the user's UID to the project so we know it belongs to them
+        userId: auth.currentUser?.uid || "anonymous", 
         createdAt: new Date().toISOString(),
       });
 
@@ -89,12 +110,24 @@ export default function Home() {
   };
 
   return (
-    <main className="max-w-3xl mx-auto p-4 sm:p-8 mt-8">
+    <main className="max-w-3xl mx-auto p-4 sm:p-8 mt-8 relative">
+      
+      {/* Global Initializing Overlay (Shows when bypassing AuthModal) */}
+      {initializing && !showAuthModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm">
+          <div className="bg-white p-8 max-w-sm w-full text-center shadow-2xl border border-gray-300">
+            <div className="w-12 h-12 border-4 border-[#d97706] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <h2 className="text-xl font-bold tracking-tight text-gray-900 mb-2">Configuring Workspace...</h2>
+            <p className="text-sm text-gray-500">Setting up your research OS.</p>
+          </div>
+        </div>
+      )}
+
       {/* Hero Section */}
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2 tracking-tight text-gray-900">The evolution of academic research starts here.</h1>
         <p className="text-gray-600 mb-4">Instant Turnitin refinement and faculty-aligned chapter generation.</p>
-        
+
         {/* Upsell to Originality Center */}
         <Link href="/originality" className="inline-block bg-orange-50 border border-orange-200 text-orange-800 text-sm font-bold px-4 py-2 uppercase tracking-wider hover:bg-orange-100 transition-colors">
           Need to fix Similarity or AI? &rarr;
@@ -111,10 +144,10 @@ export default function Home() {
       <div className="mb-6 border border-gray-300 bg-white p-6 shadow-sm">
         <h2 className="text-xl font-bold text-gray-900 mb-1">Lets get you started ...</h2>
         <p className="text-sm text-gray-500 mb-6">Sub test pick one option below .</p>
-        
+
         <div className="flex flex-col sm:flex-row sm:items-center gap-4 border border-gray-200 bg-gray-50 p-4">
           <span className="font-bold text-sm text-gray-800 uppercase tracking-wider">Do you have a research topic ?</span>
-          
+
           <div className="flex gap-8 sm:ml-auto">
             {/* Custom Topic Checkbox (Yes) */}
             <label className="flex items-center cursor-pointer gap-3 group">
@@ -126,7 +159,7 @@ export default function Home() {
               />
               <span className="font-bold text-sm uppercase text-gray-700 group-hover:text-black">Yes</span>
             </label>
-            
+
             {/* Generate Topic Checkbox (No) */}
             <label className="flex items-center cursor-pointer gap-3 group">
               <input 
@@ -168,7 +201,8 @@ export default function Home() {
             />
             <button
               type="submit"
-              className="bg-black text-white font-bold p-3 w-full hover:bg-gray-800 transition-colors rounded-none uppercase tracking-wider text-sm"
+              disabled={initializing}
+              className="bg-black text-white font-bold p-3 w-full hover:bg-gray-800 transition-colors rounded-none uppercase tracking-wider text-sm disabled:bg-gray-400"
             >
               Lock In Topic
             </button>
@@ -198,7 +232,7 @@ export default function Home() {
             />
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || initializing}
               className="bg-[#d97706] text-white font-bold p-3 w-full hover:bg-[#b45309] transition-colors disabled:bg-gray-400 rounded-none uppercase tracking-wider text-sm"
             >
               {loading ? "Scanning Academic Matrix..." : "Generate Research Topics"}
@@ -214,7 +248,8 @@ export default function Home() {
                   <li key={index}>
                     <button 
                       onClick={() => handleLockTopic(topic)}
-                      className="w-full text-left border border-gray-300 p-4 hover:border-[#d97706] hover:bg-orange-50 bg-white transition-all font-medium text-gray-900 rounded-none shadow-sm"
+                      disabled={initializing}
+                      className="w-full text-left border border-gray-300 p-4 hover:border-[#d97706] hover:bg-orange-50 bg-white transition-all font-medium text-gray-900 rounded-none shadow-sm disabled:opacity-50"
                     >
                       {topic}
                     </button>
