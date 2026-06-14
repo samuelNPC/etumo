@@ -43,7 +43,8 @@ export default function Home() {
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-4rem)] bg-blue-50 overflow-hidden font-sans">
+    // FIX 1: Removed `min-h-[calc(100vh-4rem)]` and replaced it with `w-full`
+    <div className="relative w-full bg-blue-50 overflow-hidden font-sans">
       
       {/* --- ANIMATED BACKGROUND SYSTEM --- */}
       <style dangerouslySetInnerHTML={{ __html: `
@@ -82,8 +83,8 @@ export default function Home() {
         <div className="absolute inset-0 bg-[radial-gradient(#94a3b8_1px,transparent_1px)] [background-size:24px_24px] opacity-40 [mask-image:radial-gradient(ellipse_80%_80%_at_50%_50%,#000_70%,transparent_100%)]" />
       </div>
 
-      {/* --- MAIN LAYOUT (Left on Mobile, Centered on Desktop) --- */}
-      <main className="relative z-10 w-full max-w-5xl mx-auto px-4 pt-16 md:pt-28 pb-20 flex flex-col items-start md:items-center justify-start text-left md:text-center gap-16">
+      {/* FIX 2: Changed `pb-20` to `pb-12` to tighten the gap before the footer */}
+      <main className="relative z-10 w-full max-w-5xl mx-auto px-4 pt-16 md:pt-28 pb-12 flex flex-col items-start md:items-center justify-start text-left md:text-center gap-16">
 
         {/* --- TOP SECTION: VALUE PROPOSITION --- */}
         <div className="w-full flex flex-col items-start md:items-center animate-in slide-in-from-bottom-4 fade-in duration-700">
