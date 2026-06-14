@@ -1,32 +1,53 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AuthModal from "@/components/AuthModal";
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged, signOut, User } from "firebase/auth";
 
 export default function Header() {
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  
+  // Track the logged-in user
+  const [user, setUser] = useState<User | null>(null);
 
   const navLinks = [
     { name: "Home", href: "/" },
-    { name: "Workspace", href: "/workspace" },
     { name: "Originality Center", href: "/originality" },
   ];
 
-  // When a user logs in via the Header, just close the modal and push them to their workspace
+  // 1. Listen for Firebase Auth State Changes globally
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe(); // Cleanup listener on unmount
+  }, []);
+
   const handleLoginSuccess = () => {
     setShowAuthModal(false);
     router.push("/workspace");
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setIsMobileMenuOpen(false);
+      router.push("/");
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
   };
 
   return (
     <>
       <header className="sticky top-0 z-40 w-full border-b border-gray-300 bg-white shadow-sm">
         <div className="max-w-5xl mx-auto flex h-16 items-center justify-between px-4 sm:px-6">
-          
+
           {/* Cleaned Up Brand Logo */}
           <div className="flex items-center">
             <Link href="/" className="flex flex-col">
@@ -47,12 +68,31 @@ export default function Header() {
                 {link.name}
               </Link>
             ))}
-            <button 
-              onClick={() => setShowAuthModal(true)}
-              className="bg-black text-white px-5 py-2 text-xs font-bold uppercase hover:bg-gray-800 transition-colors rounded-none"
-            >
-              Login
-            </button>
+            
+            {/* Desktop Auth Buttons Toggle */}
+            {user ? (
+              <div className="flex items-center gap-4 border-l border-gray-300 pl-8">
+                <button 
+                  onClick={() => router.push("/workspace")}
+                  className="bg-[#d97706] text-white px-5 py-2 text-xs font-bold uppercase hover:bg-[#b45309] transition-colors rounded-none"
+                >
+                  Workspace
+                </button>
+                <button 
+                  onClick={handleLogout}
+                  className="border border-gray-300 text-gray-600 px-5 py-2 text-xs font-bold uppercase hover:bg-gray-100 transition-colors rounded-none"
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <button 
+                onClick={() => setShowAuthModal(true)}
+                className="bg-black text-white px-5 py-2 text-xs font-bold uppercase hover:bg-gray-800 transition-colors rounded-none"
+              >
+                Login
+              </button>
+            )}
           </nav>
 
           {/* Mobile Hamburger Button */}
@@ -77,11 +117,15 @@ export default function Header() {
       )}
 
       {/* Mobile Drawer Menu (Sliding from Right) */}
-      <div className={`fixed top-0 right-0 h-full w-3/4 max-w-sm bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out md:hidden ${
+      <div className={`fixed top-0 right-0 h-full w-3/4 max-w-sm bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out md:hidden flex flex-col ${
         isMobileMenuOpen ? "translate-x-0" : "translate-x-full"
       }`}>
-        {/* Drawer Header & Close Button */}
-        <div className="flex justify-end p-4 border-b border-gray-100">
+        
+        {/* Drawer Header & Close Button & Etumo Logo */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-100">
+          <span className="text-xl font-black tracking-tighter text-gray-900 uppercase">
+            Etumo
+          </span>
           <button
             className="w-10 h-10 flex items-center justify-center border border-gray-300 bg-gray-50 hover:bg-gray-100 transition-colors"
             onClick={() => setIsMobileMenuOpen(false)}
@@ -94,7 +138,7 @@ export default function Header() {
         </div>
 
         {/* Drawer Navigation Links */}
-        <nav className="flex flex-col p-6 gap-6 mt-2">
+        <nav className="flex flex-col p-6 gap-6 mt-2 flex-grow">
           {navLinks.map((link) => (
             <Link
               key={link.name}
@@ -105,16 +149,40 @@ export default function Header() {
               {link.name}
             </Link>
           ))}
-          
-          <button 
-            onClick={() => {
-              setIsMobileMenuOpen(false);
-              setShowAuthModal(true);
-            }}
-            className="bg-black text-white px-4 py-4 text-sm font-bold uppercase w-full mt-4 hover:bg-gray-800 transition-colors rounded-none tracking-widest"
-          >
-            Login
-          </button>
+
+          {/* Mobile Auth Buttons Toggle */}
+          <div className="mt-auto pb-4">
+            {user ? (
+              <>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Logged in as {user.email?.split('@')[0]}</p>
+                <button 
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    router.push("/workspace");
+                  }}
+                  className="bg-[#d97706] text-white px-4 py-4 text-sm font-bold uppercase w-full hover:bg-[#b45309] transition-colors rounded-none tracking-widest mb-3"
+                >
+                  Go to Workspace
+                </button>
+                <button 
+                  onClick={handleLogout}
+                  className="border border-gray-300 bg-gray-50 text-gray-600 px-4 py-4 text-sm font-bold uppercase w-full hover:bg-gray-100 transition-colors rounded-none tracking-widest"
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <button 
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  setShowAuthModal(true);
+                }}
+                className="bg-black text-white px-4 py-4 text-sm font-bold uppercase w-full hover:bg-gray-800 transition-colors rounded-none tracking-widest"
+              >
+                Login
+              </button>
+            )}
+          </div>
         </nav>
       </div>
 
