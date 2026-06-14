@@ -5,10 +5,11 @@ import { auth, db } from "@/lib/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
 
-// Define the shape of our parsed Turnitin data
+// Added aiScore to our interface
 interface TurnitinData {
   studentName: string;
   overallSimilarity: number;
+  aiScore: number; 
   issues: {
     notCited: number;
     missingQuotations: number;
@@ -26,14 +27,12 @@ export default function OriginalityCenter() {
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // --- NEW STATES FOR DOCUMENT UPLOAD ---
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [turnitinData, setTurnitinData] = useState<TurnitinData | null>(null);
 
   const FREE_LIMIT = 20;
 
-  // 1. Initialize Auth and Load Data
   useEffect(() => {
     const today = new Date().toDateString();
 
@@ -79,7 +78,6 @@ export default function OriginalityCenter() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Handle Text Fixing (Free Tier)
   const handleFix = async (type: "ai_bypass" | "plagiarism_bypass") => {
     if (usageCount >= FREE_LIMIT) {
       setShowSubscription(true);
@@ -149,7 +147,6 @@ export default function OriginalityCenter() {
     }
   };
 
-  // 3. Handle Full Document Upload & Parsing
   const handleDocumentUpload = async () => {
     if (!selectedFile) {
       alert("Please select a Turnitin PDF report first.");
@@ -165,7 +162,7 @@ export default function OriginalityCenter() {
 
       const response = await fetch("/api/parse-turnitin", {
         method: "POST",
-        body: formData, // Do not set Content-Type header manually when using FormData
+        body: formData, 
       });
 
       const data = await response.json();
@@ -174,7 +171,6 @@ export default function OriginalityCenter() {
         throw new Error(data.error || "Failed to parse document.");
       }
 
-      // Display the personalized dashboard!
       setTurnitinData(data.data);
 
     } catch (error: any) {
@@ -185,9 +181,8 @@ export default function OriginalityCenter() {
   };
 
   const handleProceedToPayment = () => {
-    // This is where you will integrate your MTN MoMo / Airtel Money gateway
     alert("Redirecting to Mobile Money checkout for 25,000 UGX...");
-    setTurnitinData(null); // Close modal after redirect
+    setTurnitinData(null); 
     setSelectedFile(null);
   };
 
@@ -281,7 +276,7 @@ export default function OriginalityCenter() {
         </button>
       </div>
 
-      {/* SECTION 3: Turnitin Parsed Dashboard Modal (The 25k Upsell) */}
+      {/* SECTION 3: Turnitin Parsed Dashboard Modal */}
       {turnitinData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white border border-gray-300 max-w-lg w-full p-8 shadow-2xl relative text-left">
@@ -298,25 +293,38 @@ export default function OriginalityCenter() {
               <p className="text-sm text-gray-500 mt-1">We have securely mapped your document framework.</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="bg-red-50 p-4 border border-red-100">
-                <span className="block text-xs font-bold text-red-800 uppercase tracking-wider mb-1">Similarity Index</span>
-                <span className="text-3xl font-bold text-red-600">{turnitinData.overallSimilarity}%</span>
+            {/* DYNAMIC GRID: Shows Similarity, AI, or Both depending on the document */}
+            <div className={`grid gap-4 mb-6 ${turnitinData.overallSimilarity > 0 && turnitinData.aiScore > 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              
+              {turnitinData.overallSimilarity > 0 && (
+                <div className="bg-red-50 p-4 border border-red-100 flex flex-col justify-center">
+                  <span className="block text-[10px] font-bold text-red-800 uppercase tracking-wider mb-1">Plagiarism</span>
+                  <span className="text-2xl font-bold text-red-600">{turnitinData.overallSimilarity}%</span>
+                </div>
+              )}
+
+              {turnitinData.aiScore > 0 && (
+                <div className="bg-purple-50 p-4 border border-purple-100 flex flex-col justify-center">
+                  <span className="block text-[10px] font-bold text-purple-800 uppercase tracking-wider mb-1">AI Detected</span>
+                  <span className="text-2xl font-bold text-purple-600">{turnitinData.aiScore}%</span>
+                </div>
+              )}
+
+              <div className="bg-orange-50 p-4 border border-orange-100 flex flex-col justify-center">
+                <span className="block text-[10px] font-bold text-orange-800 uppercase tracking-wider mb-1">Unquoted Matches</span>
+                <span className="text-2xl font-bold text-orange-600">{turnitinData.issues.notCited}</span>
               </div>
-              <div className="bg-orange-50 p-4 border border-orange-100">
-                <span className="block text-xs font-bold text-orange-800 uppercase tracking-wider mb-1">Unquoted Matches</span>
-                <span className="text-3xl font-bold text-orange-600">{turnitinData.issues.notCited}</span>
-              </div>
+
             </div>
 
-            {turnitinData.topSources.length > 0 && (
-              <div className="mb-8">
-                <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Top Flagged Sources Detected:</h4>
-                <ul className="text-sm text-gray-600 space-y-2 font-mono">
+            {turnitinData.topSources.length > 0 && turnitinData.overallSimilarity > 0 && (
+              <div className="mb-6">
+                <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-2">Top Flagged Sources Detected:</h4>
+                <ul className="text-xs text-gray-600 space-y-1.5 font-mono">
                   {turnitinData.topSources.map((source, idx) => (
                     <li key={idx} className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0"></span>
-                      {source}
+                      <span className="truncate">{source}</span>
                     </li>
                   ))}
                 </ul>
@@ -325,7 +333,9 @@ export default function OriginalityCenter() {
 
             <div className="bg-gray-50 border border-gray-200 p-4 mb-6">
               <p className="text-sm text-gray-700 leading-relaxed font-medium">
-                Our engine will automatically extract the {turnitinData.issues.notCited} flagged text segments, restructure the syntax to break similarity algorithms, and inject proper academic citations to drop your score.
+                Our engine will automatically extract the flagged text segments, restructure the syntax to break 
+                {turnitinData.aiScore > 0 ? " AI detection algorithms" : " similarity matching"}, 
+                and inject proper academic citations to drop your score.
               </p>
             </div>
 
@@ -339,9 +349,9 @@ export default function OriginalityCenter() {
         </div>
       )}
 
-      {/* SECTION 4: Subscription Upsell Modal (Triggered at free limit) */}
       {showSubscription && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4 backdrop-blur-sm animate-in fade-in">
+          {/* ... (Subscription UI Remains the same) ... */}
           <div className="bg-white border border-gray-300 max-w-md w-full p-8 shadow-2xl text-center relative">
             <button 
               onClick={() => setShowSubscription(false)}
@@ -349,7 +359,6 @@ export default function OriginalityCenter() {
             >
               ✕
             </button>
-
             <div className="w-16 h-16 bg-orange-100 border-2 border-[#d97706] rounded-full flex items-center justify-center mx-auto mb-4">
               <span className="text-[#d97706] text-2xl font-bold">!</span>
             </div>
@@ -357,12 +366,10 @@ export default function OriginalityCenter() {
             <p className="text-sm text-gray-500 mb-8">
               You have used your 20 free text removals for today. You can wait until tomorrow, or unlock bulk removals right now.
             </p>
-
             <div className="bg-gray-50 border border-gray-200 p-4 mb-6">
               <h4 className="font-bold text-gray-900 uppercase tracking-wider text-sm mb-1">Pro Tier</h4>
               <p className="text-xs text-gray-600">Unlock 100 text removals for uninterrupted workflow.</p>
             </div>
-
             <button 
               onClick={() => alert("Redirecting to payment gateway...")}
               className="w-full bg-[#d97706] text-white font-bold py-4 uppercase text-sm tracking-wider hover:bg-[#b45309] transition-colors rounded-none"
