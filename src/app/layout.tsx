@@ -6,8 +6,21 @@ import Header from "@/components/Header";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Etumo | Finish your research project faster",
-  description: "Academic research, similarity refinement, and formatting OS for university students.",
+  metadataBase: new URL("https://www.etomu.com"),
+  title: "Etomu | Where research gets done.",
+  description: "Etomu is an AI-powered research workspace that helps students, researchers, and academic writers move from idea to submission-ready documents faster.",
+  openGraph: {
+    title: "Etomu | Where research gets done.",
+    description: "Etomu is an AI-powered research workspace that helps students, researchers, and academic writers move from idea to submission-ready documents faster.",
+    url: "https://www.etomu.com",
+    siteName: "Etomu",
+    type: "website",
+    locale: "en_US",
+  },
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({
@@ -19,7 +32,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="bg-white text-gray-900 antialiased flex flex-col min-h-screen">
         <Header />
-        
+
         {/* Main content wrapper */}
         <div className="flex-grow">
           {children}
