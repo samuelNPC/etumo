@@ -10,6 +10,7 @@ interface GuidelineUploaderProps {
 export default function GuidelineUploader({ projectId, onComplete }: GuidelineUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false); // Added success state
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleUpload = async (e: React.FormEvent) => {
@@ -18,6 +19,7 @@ export default function GuidelineUploader({ projectId, onComplete }: GuidelineUp
 
     setLoading(true);
     setErrorMsg(null);
+    setSuccess(false);
     
     const formData = new FormData();
     formData.append("file", file);
@@ -31,14 +33,18 @@ export default function GuidelineUploader({ projectId, onComplete }: GuidelineUp
 
       const data = await res.json();
       if (data.success) {
-        onComplete();
+        setSuccess(true);
+        // Wait 1.5 seconds so the user sees the success message, then transition
+        setTimeout(() => {
+          onComplete();
+        }, 1500);
       } else {
         setErrorMsg(data.error || "Failed to process the document.");
       }
     } catch (error) {
       setErrorMsg("Network error processing document. Please check your connection.");
     } finally {
-      setLoading(false);
+      if (!data?.success) setLoading(false); // Only stop loading if it failed
     }
   };
 
@@ -64,7 +70,6 @@ export default function GuidelineUploader({ projectId, onComplete }: GuidelineUp
         }`}>
           <input 
             type="file" 
-            // Removed Word docs. Strictly forcing PDFs, Images, or TXT.
             accept=".pdf, .txt, image/png, image/jpeg, image/jpg"
             onChange={(e) => {
               setFile(e.target.files?.[0] || null);
@@ -72,22 +77,32 @@ export default function GuidelineUploader({ projectId, onComplete }: GuidelineUp
             }}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             required
+            disabled={loading || success}
           />
           <div className="flex flex-col items-center justify-center gap-2">
             <svg className={`w-8 h-8 ${file ? "text-black" : "text-gray-400"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
             <span className={`font-bold ${file ? "text-black" : "text-gray-600"}`}>
               {file ? file.name : "Drag & Drop Document Here"}
             </span>
-            {!file && <span className="text-xs text-gray-400 font-medium">Supports PDF, TXT, and Images (No Word Docs)</span>}
+            {!file && <span className="text-xs text-gray-400 font-medium">Supports PDF, TXT, and Images</span>}
           </div>
         </div>
 
         <button
           type="submit"
-          disabled={loading || !file}
-          className="bg-black text-white font-bold py-4 rounded-xl uppercase tracking-widest text-sm hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-500 transition-colors shadow-md flex items-center justify-center gap-2"
+          disabled={loading || !file || success}
+          className={`font-bold py-4 rounded-xl uppercase tracking-widest text-sm transition-all shadow-md flex items-center justify-center gap-2 ${
+            success 
+              ? "bg-[#34A853] text-white" 
+              : "bg-black text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-500"
+          }`}
         >
-          {loading ? (
+          {success ? (
+            <>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+              Configured Successfully!
+            </>
+          ) : loading ? (
              <>
                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                Extracting Rules...
