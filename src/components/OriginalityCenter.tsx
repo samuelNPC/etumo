@@ -5,6 +5,17 @@ import { auth, db } from "@/lib/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
 
+// Define the shape of our parsed Turnitin data
+interface TurnitinData {
+  studentName: string;
+  overallSimilarity: number;
+  issues: {
+    notCited: number;
+    missingQuotations: number;
+  };
+  topSources: string[];
+}
+
 export default function OriginalityCenter() {
   const [user, setUser] = useState<User | null>(null);
   const [inputText, setInputText] = useState("");
@@ -15,9 +26,14 @@ export default function OriginalityCenter() {
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // --- NEW STATES FOR DOCUMENT UPLOAD ---
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
+  const [turnitinData, setTurnitinData] = useState<TurnitinData | null>(null);
+
   const FREE_LIMIT = 20;
 
-  // 1. Initialize Auth and Load Data (Firebase + LocalStorage sync)
+  // 1. Initialize Auth and Load Data
   useEffect(() => {
     const today = new Date().toDateString();
 
@@ -28,7 +44,7 @@ export default function OriginalityCenter() {
         if (date === today) {
           setUsageCount(count);
         } else {
-          setUsageCount(0); // Reset for a new day
+          setUsageCount(0);
         }
       }
     };
@@ -36,7 +52,6 @@ export default function OriginalityCenter() {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        // User is logged in: Fetch from Firebase to sync across devices
         try {
           const userRef = doc(db, "users", currentUser.uid);
           const userSnap = await getDoc(userRef);
@@ -45,20 +60,18 @@ export default function OriginalityCenter() {
             const data = userSnap.data();
             if (data.lastUsageDate === today) {
               setUsageCount(data.originalityUsageCount || 0);
-              // Sync Firebase down to LocalStorage
               localStorage.setItem("etumo_usage", JSON.stringify({ count: data.originalityUsageCount, date: today }));
             } else {
-              setUsageCount(0); // Reset for a new day
+              setUsageCount(0);
             }
           } else {
-            loadLocalData(); // Fallback if no Firebase doc exists yet
+            loadLocalData();
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
           loadLocalData();
         }
       } else {
-        // Not logged in: Rely entirely on LocalStorage
         loadLocalData();
       }
     });
@@ -66,7 +79,7 @@ export default function OriginalityCenter() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Handle Text Fixing and Saving Progress (Connected to live API)
+  // 2. Handle Text Fixing (Free Tier)
   const handleFix = async (type: "ai_bypass" | "plagiarism_bypass") => {
     if (usageCount >= FREE_LIMIT) {
       setShowSubscription(true);
@@ -83,12 +96,11 @@ export default function OriginalityCenter() {
     setCopyFeedback(false);
 
     try {
-      // Sending data matching YOUR advanced backend API structure
       const response = await fetch("/api/rewrite", { 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          flaggedTexts: [inputText], // Your API expects an array
+          flaggedTexts: [inputText],
           type: type 
         }),
       });
@@ -99,22 +111,17 @@ export default function OriginalityCenter() {
         throw new Error(data.error || "Server processing failed");
       }
 
-      // Extracting the rewritten text from your API's specific response structure
       if (data.success && data.cleanedData && data.cleanedData.length > 0) {
         setCleanedResults(data.cleanedData[0].rewritten);
       } else {
         throw new Error("Failed to parse the AI response.");
       }
 
-      // --- BILLING & USAGE UPDATE LOGIC ---
       const newCount = usageCount + 1;
       const today = new Date().toDateString();
       setUsageCount(newCount);
-
-      // Save to LocalStorage immediately
       localStorage.setItem("etumo_usage", JSON.stringify({ count: newCount, date: today }));
 
-      // Save to Firebase permanently if logged in
       if (user) {
         try {
           const userRef = doc(db, "users", user.uid);
@@ -134,7 +141,6 @@ export default function OriginalityCenter() {
     }
   };
 
-  // 3. Handle Clipboard Copy
   const handleCopy = () => {
     if (cleanedResults) {
       navigator.clipboard.writeText(cleanedResults);
@@ -143,12 +149,46 @@ export default function OriginalityCenter() {
     }
   };
 
-  // 4. Handle Full Document Upload Mock
-  const handleDocumentUpload = () => {
-    const confirmed = window.confirm("Unlock Full Document Remediation for 25,000 UGX via Mobile Money. Proceed to payment gateway?");
-    if (confirmed) {
-      alert("Redirecting to payment..."); // Replace with actual redirect
+  // 3. Handle Full Document Upload & Parsing
+  const handleDocumentUpload = async () => {
+    if (!selectedFile) {
+      alert("Please select a Turnitin PDF report first.");
+      return;
     }
+
+    setIsParsing(true);
+    setTurnitinData(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      const response = await fetch("/api/parse-turnitin", {
+        method: "POST",
+        body: formData, // Do not set Content-Type header manually when using FormData
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error || "Failed to parse document.");
+      }
+
+      // Display the personalized dashboard!
+      setTurnitinData(data.data);
+
+    } catch (error: any) {
+      alert(error.message || "An error occurred while scanning the document.");
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const handleProceedToPayment = () => {
+    // This is where you will integrate your MTN MoMo / Airtel Money gateway
+    alert("Redirecting to Mobile Money checkout for 25,000 UGX...");
+    setTurnitinData(null); // Close modal after redirect
+    setSelectedFile(null);
   };
 
   return (
@@ -187,7 +227,6 @@ export default function OriginalityCenter() {
           </button>
         </div>
 
-        {/* Cleaned Result & Copy Action */}
         {cleanedResults && (
           <div className="bg-green-50 p-6 border border-green-200 mt-6 relative animate-in fade-in duration-300">
             <h3 className="font-bold text-xs uppercase tracking-wider text-green-900 mb-2">Remediated Text</h3>
@@ -214,27 +253,93 @@ export default function OriginalityCenter() {
       </div>
 
       {/* SECTION 2: Full Document Upload */}
-      <div className="border border-gray-300 bg-gray-50 p-8 text-center shadow-sm">
-        <h3 className="font-bold text-lg text-gray-900 mb-2">Upload Full Document</h3>
+      <div className="border border-gray-300 bg-gray-50 p-8 text-center shadow-sm relative">
+        <h3 className="font-bold text-lg text-gray-900 mb-2">Upload Turnitin Report</h3>
         <p className="text-sm text-gray-600 mb-6 max-w-md mx-auto">
-          Skip the copy-pasting. Upload your entire PDF or Word document, and our engine will fix the formatting and similarity in one go.
+          Upload your raw Turnitin PDF. Our engine will instantly scan your metrics and isolate flagged content.
         </p>
 
-        <div className="border-2 border-dashed border-gray-400 p-8 bg-white mb-6 relative cursor-pointer hover:bg-gray-50 transition-colors">
-          <input type="file" accept=".pdf,.doc,.docx" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-          <span className="font-bold text-sm text-gray-700 uppercase tracking-widest">Select PDF or Word File</span>
-          <p className="text-xs text-gray-400 mt-2">Attaching is free.</p>
+        <div className={`border-2 border-dashed ${selectedFile ? 'border-green-500 bg-green-50' : 'border-gray-400 bg-white'} p-8 mb-6 relative cursor-pointer hover:bg-gray-100 transition-colors`}>
+          <input 
+            type="file" 
+            accept=".pdf" 
+            onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+          />
+          <span className={`font-bold text-sm uppercase tracking-widest ${selectedFile ? 'text-green-700' : 'text-gray-700'}`}>
+            {selectedFile ? selectedFile.name : "Select Turnitin PDF File"}
+          </span>
+          {!selectedFile && <p className="text-xs text-gray-400 mt-2">Attaching is free.</p>}
         </div>
 
         <button 
           onClick={handleDocumentUpload}
-          className="bg-black text-white px-8 py-3 text-xs font-bold uppercase tracking-widest hover:bg-gray-800 transition-colors rounded-none"
+          disabled={!selectedFile || isParsing}
+          className="bg-black text-white px-8 py-3 text-xs font-bold uppercase tracking-widest hover:bg-gray-800 disabled:bg-gray-400 transition-colors rounded-none"
         >
-          Fix Full Document (25,000 UGX)
+          {isParsing ? "Scanning Document Elements..." : "Analyze Document"}
         </button>
       </div>
 
-      {/* SECTION 3: Subscription Upsell (Triggered at limit) */}
+      {/* SECTION 3: Turnitin Parsed Dashboard Modal (The 25k Upsell) */}
+      {turnitinData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white border border-gray-300 max-w-lg w-full p-8 shadow-2xl relative text-left">
+            <button 
+              onClick={() => setTurnitinData(null)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-black font-bold p-2 transition-colors"
+            >
+              ✕
+            </button>
+
+            <div className="border-b border-gray-200 pb-4 mb-6">
+              <span className="text-xs font-mono uppercase text-[#d97706] tracking-wider font-bold">Analysis Complete</span>
+              <h3 className="text-2xl font-bold tracking-tight text-gray-900 mt-1">Hello, {turnitinData.studentName}</h3>
+              <p className="text-sm text-gray-500 mt-1">We have securely mapped your document framework.</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="bg-red-50 p-4 border border-red-100">
+                <span className="block text-xs font-bold text-red-800 uppercase tracking-wider mb-1">Similarity Index</span>
+                <span className="text-3xl font-bold text-red-600">{turnitinData.overallSimilarity}%</span>
+              </div>
+              <div className="bg-orange-50 p-4 border border-orange-100">
+                <span className="block text-xs font-bold text-orange-800 uppercase tracking-wider mb-1">Unquoted Matches</span>
+                <span className="text-3xl font-bold text-orange-600">{turnitinData.issues.notCited}</span>
+              </div>
+            </div>
+
+            {turnitinData.topSources.length > 0 && (
+              <div className="mb-8">
+                <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Top Flagged Sources Detected:</h4>
+                <ul className="text-sm text-gray-600 space-y-2 font-mono">
+                  {turnitinData.topSources.map((source, idx) => (
+                    <li key={idx} className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0"></span>
+                      {source}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="bg-gray-50 border border-gray-200 p-4 mb-6">
+              <p className="text-sm text-gray-700 leading-relaxed font-medium">
+                Our engine will automatically extract the {turnitinData.issues.notCited} flagged text segments, restructure the syntax to break similarity algorithms, and inject proper academic citations to drop your score.
+              </p>
+            </div>
+
+            <button 
+              onClick={handleProceedToPayment}
+              className="w-full bg-black text-white font-bold py-4 uppercase text-sm tracking-wider hover:bg-gray-800 transition-colors rounded-none shadow-md"
+            >
+              Remediate Full Document (25,000 UGX)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* SECTION 4: Subscription Upsell Modal (Triggered at free limit) */}
       {showSubscription && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white border border-gray-300 max-w-md w-full p-8 shadow-2xl text-center relative">
