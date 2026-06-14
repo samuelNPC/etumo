@@ -4,7 +4,6 @@ import { db } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-// Using 2.5-flash to bypass the 404 (retired models) AND the 429 (Pro rate limits)
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 export async function POST(req: Request) {
@@ -17,9 +16,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing file or Project ID." }, { status: 400 });
     }
 
+    const mimeType = file.type; 
+
+    // --- STRICT GATEKEEPER: Prevent Google API Crashes ---
+    const supportedTypes = [
+      "application/pdf", 
+      "text/plain", 
+      "image/png", 
+      "image/jpeg", 
+      "image/jpg"
+    ];
+
+    if (!supportedTypes.includes(mimeType)) {
+      return NextResponse.json(
+        { error: "Microsoft Word documents are not supported by the AI. Please 'Save As PDF' and upload the PDF version." },
+        { status: 400 }
+      );
+    }
+
     const arrayBuffer = await file.arrayBuffer();
     const base64Data = Buffer.from(arrayBuffer).toString("base64");
-    const mimeType = file.type; 
 
     const prompt = `
       You are an academic structuring AI. Analyze this uploaded university research guideline document.
@@ -42,8 +58,6 @@ export async function POST(req: Request) {
     ]);
 
     let responseText = result.response.text().trim();
-    
-    // Aggressively strip Markdown formatting to prevent JSON.parse crashes
     responseText = responseText.replace(/```json/gi, "").replace(/```/g, "").trim();
 
     let extractedGuidelines;
@@ -70,7 +84,6 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error("Backend processing error:", error);
     
-    // Improved Error Handler: Checks for API/Model errors first
     if (error.message?.includes("404") || error.message?.includes("not found")) {
       return NextResponse.json(
         { error: "AI Model not found. Please check your API configuration." },
@@ -85,12 +98,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const errorMessage = error.message?.includes("MIME type")
-      ? "Unsupported file type. Please save your document as a PDF, Image, or TXT file."
-      : "Failed to read the document. Ensure it is not corrupted and try again.";
-
     return NextResponse.json(
-      { error: errorMessage },
+      { error: "Failed to read the document. Ensure it is not corrupted and try again." },
       { status: 500 }
     );
   }
