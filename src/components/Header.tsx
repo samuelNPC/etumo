@@ -64,10 +64,24 @@ export default function Header() {
     </Link>
   );
 
+  // Reusable Animated Hamburger/X Button
+  const AnimatedMenuButton = ({ isOpen, onClick }: { isOpen: boolean, onClick: () => void }) => (
+    <button
+      className="md:hidden flex flex-col justify-center items-center w-10 h-10 group focus:outline-none"
+      onClick={onClick}
+      aria-label="Toggle Menu"
+    >
+      <span className={`block w-6 h-[2px] bg-black rounded-full transition-transform duration-300 ease-in-out origin-center ${isOpen ? "translate-y-[6px] rotate-45" : "-translate-y-1.5"}`}></span>
+      <span className={`block w-6 h-[2px] bg-black rounded-full transition-opacity duration-300 ease-in-out ${isOpen ? "opacity-0" : "opacity-100"}`}></span>
+      <span className={`block w-6 h-[2px] bg-black rounded-full transition-transform duration-300 ease-in-out origin-center ${isOpen ? "-translate-y-[6px] -rotate-45" : "translate-y-1.5"}`}></span>
+    </button>
+  );
+
   return (
     <>
       <header className="sticky top-0 z-40 w-full border-b border-gray-200 bg-white/95 backdrop-blur-sm">
-        <div className="max-w-6xl mx-auto flex h-20 items-center justify-between px-4 sm:px-8">
+        {/* Reduced height from h-20 to h-16 */}
+        <div className="max-w-6xl mx-auto flex h-16 items-center justify-between px-4 sm:px-8">
           
           <BrandLogo />
 
@@ -104,16 +118,8 @@ export default function Header() {
             )}
           </nav>
 
-          {/* Animated Hamburger Button */}
-          <button
-            className="md:hidden flex flex-col justify-center items-center w-10 h-10 group focus:outline-none"
-            onClick={() => setIsMobileMenuOpen(true)}
-            aria-label="Open Menu"
-          >
-            <span className="block w-6 h-[2px] bg-black rounded-full transition-transform duration-300 ease-in-out -translate-y-1.5"></span>
-            <span className="block w-6 h-[2px] bg-black rounded-full transition-opacity duration-300 ease-in-out"></span>
-            <span className="block w-6 h-[2px] bg-black rounded-full transition-transform duration-300 ease-in-out translate-y-1.5"></span>
-          </button>
+          {/* Morphing Hamburger Button for Main Header */}
+          <AnimatedMenuButton isOpen={isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(true)} />
         </div>
       </header>
 
@@ -125,23 +131,16 @@ export default function Header() {
         />
       )}
 
-      {/* Mobile Drawer Menu (Sliding from Left, Leaves space on Right) */}
-      <div className={`fixed inset-y-0 left-0 w-4/5 max-w-sm bg-white z-50 transform transition-transform duration-300 ease-in-out md:hidden flex flex-col shadow-2xl ${
-        isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+      {/* Mobile Drawer Menu (Sliding from Right, Leaves space on Left) */}
+      <div className={`fixed inset-y-0 right-0 w-4/5 max-w-sm bg-white z-50 transform transition-transform duration-300 ease-in-out md:hidden flex flex-col shadow-2xl ${
+        isMobileMenuOpen ? "translate-x-0" : "translate-x-full"
       }`}>
         
-        {/* Drawer Header (Own Logo & Close Button) */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-100 h-20">
+        {/* Drawer Header (Own Logo & Animated Close Button) */}
+        {/* Kept h-16 here to perfectly match the main header height */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-100 h-16">
           <BrandLogo />
-          <button
-            className="w-10 h-10 flex items-center justify-center rounded-full bg-gray-50 hover:bg-gray-100 transition-colors"
-            onClick={() => setIsMobileMenuOpen(false)}
-            aria-label="Close Menu"
-          >
-            <svg className="w-6 h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <AnimatedMenuButton isOpen={isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(false)} />
         </div>
 
         <nav className="flex flex-col px-6 py-4 flex-grow overflow-y-auto">
