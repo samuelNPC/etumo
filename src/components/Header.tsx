@@ -11,8 +11,6 @@ export default function Header() {
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  
-  // Track the logged-in user
   const [user, setUser] = useState<User | null>(null);
 
   const navLinks = [
@@ -20,12 +18,11 @@ export default function Header() {
     { name: "Originality Center", href: "/originality" },
   ];
 
-  // 1. Listen for Firebase Auth State Changes globally
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
     });
-    return () => unsubscribe(); // Cleanup listener on unmount
+    return () => unsubscribe();
   }, []);
 
   const handleLoginSuccess = () => {
@@ -43,18 +40,30 @@ export default function Header() {
     }
   };
 
+  // Reusable Brand Logo Component for both Header and Drawer
+  const BrandLogo = () => (
+    <Link href="/" className="flex items-center gap-2" onClick={() => setIsMobileMenuOpen(false)}>
+      {/* Drop your logo.png or logo.svg into the /public folder */}
+      <img src="/logo.png" alt="Etomu Logo" className="w-8 h-8 object-contain" />
+      
+      <span className="text-2xl font-black tracking-tighter leading-none lowercase">
+        <span className="text-[#4285F4]">e</span>
+        <span className="text-[#EA4335]">t</span>
+        <span className="text-[#FBBC05]">o</span>
+        <span className="text-[#34A853]">m</span>
+        <span className="text-[#9333EA]">u</span>
+      </span>
+    </Link>
+  );
+
   return (
     <>
       <header className="sticky top-0 z-40 w-full border-b border-gray-300 bg-white shadow-sm">
         <div className="max-w-5xl mx-auto flex h-16 items-center justify-between px-4 sm:px-6">
 
-          {/* Cleaned Up Brand Logo */}
+          {/* New Multi-colored Logo */}
           <div className="flex items-center">
-            <Link href="/" className="flex flex-col">
-              <span className="text-2xl font-black tracking-tighter text-gray-900 uppercase leading-none">
-                Etumo
-              </span>
-            </Link>
+            <BrandLogo />
           </div>
 
           {/* Desktop Navigation */}
@@ -69,7 +78,6 @@ export default function Header() {
               </Link>
             ))}
             
-            {/* Desktop Auth Buttons Toggle */}
             {user ? (
               <div className="flex items-center gap-4 border-l border-gray-300 pl-8">
                 <button 
@@ -108,7 +116,7 @@ export default function Header() {
         </div>
       </header>
 
-      {/* Mobile Drawer Overlay (Blurred Backdrop) */}
+      {/* Mobile Drawer Overlay */}
       {isMobileMenuOpen && (
         <div 
           className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm md:hidden transition-opacity"
@@ -116,16 +124,14 @@ export default function Header() {
         />
       )}
 
-      {/* Mobile Drawer Menu (Sliding from Right) */}
+      {/* Mobile Drawer Menu */}
       <div className={`fixed top-0 right-0 h-full w-3/4 max-w-sm bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out md:hidden flex flex-col ${
         isMobileMenuOpen ? "translate-x-0" : "translate-x-full"
       }`}>
         
-        {/* Drawer Header & Close Button & Etumo Logo */}
+        {/* Drawer Header with Logo & Close Button */}
         <div className="flex items-center justify-between p-4 border-b border-gray-100">
-          <span className="text-xl font-black tracking-tighter text-gray-900 uppercase">
-            Etumo
-          </span>
+          <BrandLogo />
           <button
             className="w-10 h-10 flex items-center justify-center border border-gray-300 bg-gray-50 hover:bg-gray-100 transition-colors"
             onClick={() => setIsMobileMenuOpen(false)}
@@ -186,7 +192,6 @@ export default function Header() {
         </nav>
       </div>
 
-      {/* Global Auth Modal */}
       <AuthModal 
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
