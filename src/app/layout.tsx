@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css"; 
 import Header from "@/components/Header";
+import Footer from "@/components/Footer"; // <--- Add this import
 
-// Force dynamic rendering to prevent Vercel build hangs
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     locale: "en_US",
   },
   icons: {
-    icon: "/favicon.icon",
+    icon: "/favicon.png",
     apple: "/apple-touch-icon.png",
   },
 };
@@ -33,10 +33,13 @@ export default function RootLayout({
       <body className="bg-white text-gray-900 antialiased flex flex-col min-h-screen">
         <Header />
 
-        {/* Main content wrapper */}
+        {/* Main content wrapper with flex-grow to push footer to bottom */}
         <div className="flex-grow">
           {children}
         </div>
+
+        {/* Global Footer injected here */}
+        <Footer />
       </body>
     </html>
   );
