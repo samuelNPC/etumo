@@ -4,20 +4,20 @@ import React, { useState } from "react";
 
 interface GuidelineUploaderProps {
   projectId: string;
-  onComplete: () => void; // Triggered to refresh the workspace after successful upload
+  onComplete: () => void;
 }
 
 export default function GuidelineUploader({ projectId, onComplete }: GuidelineUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null); // Replaced alert() with sleek UI error
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) return;
 
     setLoading(true);
-    setErrorMsg(null); // Clear previous errors
+    setErrorMsg(null);
     
     const formData = new FormData();
     formData.append("file", file);
@@ -33,7 +33,6 @@ export default function GuidelineUploader({ projectId, onComplete }: GuidelineUp
       if (data.success) {
         onComplete();
       } else {
-        // Display the backend error cleanly in the UI
         setErrorMsg(data.error || "Failed to process the document.");
       }
     } catch (error) {
@@ -52,7 +51,6 @@ export default function GuidelineUploader({ projectId, onComplete }: GuidelineUp
         </p>
       </div>
 
-      {/* Sleek Error Banner instead of browser alert() */}
       {errorMsg && (
         <div className="mb-6 border-l-4 border-red-500 bg-red-50 p-4 text-red-700 text-sm font-bold rounded-r-lg animate-in fade-in">
           ⚠️ {errorMsg}
@@ -61,17 +59,16 @@ export default function GuidelineUploader({ projectId, onComplete }: GuidelineUp
 
       <form onSubmit={handleUpload} className="flex flex-col gap-5">
         
-        {/* Premium Drag & Drop Zone */}
         <div className={`border-2 border-dashed p-8 text-center rounded-xl transition-all cursor-pointer relative ${
           file ? "border-black bg-gray-50" : "border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400"
         }`}>
           <input 
             type="file" 
-            // Expanded to accept Word docs and text files
-            accept=".pdf, .doc, .docx, .txt, image/png, image/jpeg, image/jpg"
+            // Removed Word docs. Strictly forcing PDFs, Images, or TXT.
+            accept=".pdf, .txt, image/png, image/jpeg, image/jpg"
             onChange={(e) => {
               setFile(e.target.files?.[0] || null);
-              setErrorMsg(null); // Clear error when they pick a new file
+              setErrorMsg(null);
             }}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             required
@@ -81,7 +78,7 @@ export default function GuidelineUploader({ projectId, onComplete }: GuidelineUp
             <span className={`font-bold ${file ? "text-black" : "text-gray-600"}`}>
               {file ? file.name : "Drag & Drop Document Here"}
             </span>
-            {!file && <span className="text-xs text-gray-400 font-medium">Supports PDF, DOCX, TXT, and Images</span>}
+            {!file && <span className="text-xs text-gray-400 font-medium">Supports PDF, TXT, and Images (No Word Docs)</span>}
           </div>
         </div>
 
