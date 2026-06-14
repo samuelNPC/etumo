@@ -4,8 +4,8 @@ import { db } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-// Added '-latest' to fix the 404 Not Found error
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+// Using 2.5-flash to bypass the 404 (retired models) AND the 429 (Pro rate limits)
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 export async function POST(req: Request) {
   try {
@@ -42,6 +42,8 @@ export async function POST(req: Request) {
     ]);
 
     let responseText = result.response.text().trim();
+    
+    // Aggressively strip Markdown formatting to prevent JSON.parse crashes
     responseText = responseText.replace(/```json/gi, "").replace(/```/g, "").trim();
 
     let extractedGuidelines;
