@@ -7,7 +7,7 @@ import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import LockedDocumentViewer from "@/components/LockedDocumentViewer";
 import GuidelineUploader from "@/components/GuidelineUploader";
-import WorkspaceProgress from "@/components/WorkspaceProgress"; // Import the new menu
+import WorkspaceProgress from "@/components/WorkspaceProgress";
 
 interface ChapterStructure {
   key: string;
@@ -123,10 +123,31 @@ function WorkspaceContent() {
     if (!projectId || !activeChapter) return;
     const isPaid = window.confirm(`Unlock ${activeChapterLabel} export for UGX 20,000 via Mobile Money?`);
     if (!isPaid) return;
-    // Download logic here...
+    
+    try {
+      const res = await fetch("/api/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, chapterKey: activeChapter }),
+      });
+
+      if (!res.ok) throw new Error("Export failed");
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${activeChapter}_formatted.docx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (error) {
+      alert("Error downloading document.");
+    }
   };
 
-  // INTERCEPTOR
+  // INTERCEPTOR: Clean error state if they visit /workspace without a topic ID
   if (!projectId) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
@@ -165,12 +186,13 @@ function WorkspaceContent() {
       {/* TWO-COLUMN LAYOUT ON DESKTOP, STACKED ON MOBILE */}
       <div className="flex flex-col md:flex-row gap-6 md:gap-8">
         
-        {/* The new Progress Menu Component */}
+        {/* The updated Progress Menu Component */}
         <WorkspaceProgress 
           structure={currentStructure}
           activeChapter={activeChapter}
           setActiveChapter={setActiveChapter}
           guidelinesUploaded={isGuidelinesUploaded}
+          progress={project.progress} // <--- Added progress prop here
         />
 
         {/* DYNAMIC CONTENT AREA */}
