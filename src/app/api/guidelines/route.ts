@@ -4,8 +4,8 @@ import { db } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-// Switched from "pro" to "1.5-flash" to bypass the strict 2 RPM limit
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+// Added '-latest' to fix the 404 Not Found error
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
 
 export async function POST(req: Request) {
   try {
@@ -17,11 +17,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing file or Project ID." }, { status: 400 });
     }
 
-    // Convert file to base64 for Gemini Vision
     const arrayBuffer = await file.arrayBuffer();
     const base64Data = Buffer.from(arrayBuffer).toString("base64");
-    
-    // Gemini inlineData strictly supports application/pdf, text/plain, and images.
     const mimeType = file.type; 
 
     const prompt = `
@@ -45,8 +42,6 @@ export async function POST(req: Request) {
     ]);
 
     let responseText = result.response.text().trim();
-
-    // Aggressively strip Markdown formatting to prevent JSON.parse crashes
     responseText = responseText.replace(/```json/gi, "").replace(/```/g, "").trim();
 
     let extractedGuidelines;
@@ -60,7 +55,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Save the dynamic structure directly to the student's project in Firestore
     const projectRef = doc(db, "projects", projectId);
     await updateDoc(projectRef, {
       guidelines: {
@@ -74,9 +68,23 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error("Backend processing error:", error);
     
-    // Provide dynamic error messaging depending on what caused the crash
-    const errorMessage = error.message?.includes("MIME type") || error.message?.includes("supported")
-      ? "Unsupported file type. Please save your document as a PDF or TXT file and try again."
+    // Improved Error Handler: Checks for API/Model errors first
+    if (error.message?.includes("404") || error.message?.includes("not found")) {
+      return NextResponse.json(
+        { error: "AI Model not found. Please check your API configuration." },
+        { status: 500 }
+      );
+    }
+    
+    if (error.message?.includes("429") || error.message?.includes("Quota")) {
+      return NextResponse.json(
+        { error: "AI Rate limit exceeded. Please wait a few seconds and try again." },
+        { status: 500 }
+      );
+    }
+
+    const errorMessage = error.message?.includes("MIME type")
+      ? "Unsupported file type. Please save your document as a PDF, Image, or TXT file."
       : "Failed to read the document. Ensure it is not corrupted and try again.";
 
     return NextResponse.json(
