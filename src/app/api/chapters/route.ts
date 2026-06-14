@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     `;
 
     // Automatically inject ALL prior generated chapters in sequential order
-    if (currentIndex > 1) { // Index 0 is usually 'guidelines', which has no content
+    if (currentIndex > 1) { 
       memoryContext += `\n\n--- PREVIOUSLY GENERATED CONTENT FOR CONTEXT ---\n`;
       for (let i = 1; i < currentIndex; i++) {
         const prevKey = structure[i].key;
@@ -59,51 +59,36 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4. Determine Intent (Preliminary Pages vs Body Chapters)
-    let prompt = "";
-    const isPrelim = chapterKey.toLowerCase().includes("prelim") || chapterLabel.toLowerCase().includes("prelim") || chapterKey.toLowerCase().includes("title") || chapterKey.toLowerCase().includes("cover");
+    // 4. The Master Unified Prompt (No more if/else prelim splits)
+    const prompt = `
+      You are an expert academic research writer drafting a final-year university project.
+      
+      Project Memory Context:
+      ${memoryContext}
 
-    if (isPrelim) {
-      prompt = `
-        You are an expert academic formatting assistant. 
-        The user needs the content for the ${chapterLabel.toUpperCase()} for this research:
-        ${memoryContext}
-        
-        INSTRUCTIONS:
-        - Write out a professional, clean Title/Cover Page layout.
-        - Include placeholders for the student's name, registration number, faculty, and date.
-        - Add standard academic preliminary text sections such as a formal Declaration statement, Dedication section, and Acknowledgments section.
-        - Apply the formatting rules: ${formattingRules}
-        - DO NOT write chapter body paragraphs, introductions, or literature reviews yet. Only generate structural preliminary page text.
-      `;
-    } else {
-      prompt = `
-        You are an expert academic research writer drafting a final-year university project.
-        
-        Here is the established project memory (Use this to ensure smooth transitions and avoid repeating information):
-        ${memoryContext}
-
-        Your task: Write a highly structured, deep, and academic draft for the section: "${chapterLabel.toUpperCase()}".
-        
-        INSTRUCTIONS:
-        - Ensure the tone is formal, rigorous, and aligns perfectly with the topic and prior chapters.
-        - Apply the university formatting rules provided: ${formattingRules}
-        - Do not generate generic placeholders. Write the actual academic content, citing theoretical literature where appropriate.
-        - Format the output in plain text with clear paragraph spacing and standard academic headings. Do not use markdown wrappers like \`\`\`md.
-      `;
-    }
+      Your explicit task: Write the exact content ONLY for the section named: "${chapterLabel.toUpperCase()}".
+      
+      CRITICAL RULES - YOU MUST OBEY THESE STRICTLY:
+      1. SINGLE ISOLATED SECTION: If the requested section is "Declaration", write ONLY the Declaration. If it is "Title Page", write ONLY the Title Page. Do not group multiple preliminary pages together. 
+      2. NO HTML OR MARKDOWN: Do NOT output HTML tags (<p>, <br>, <b>, <span>). Do NOT output markdown code blocks (\`\`\`md). Output strictly raw, clean, plain text with standard line breaks.
+      3. NO CONVERSATIONAL FILLER: Do not write introductory phrases like "Here is the content for your research", "Sure", or "**(Start of Document)**". The very first word you output must be the actual beginning of the academic document text.
+      4. ACADEMIC TONE: Ensure the tone is formal and rigorous. For body chapters, cite theoretical literature where appropriate. 
+      5. FORMATTING: Apply the university formatting rules provided: ${formattingRules}
+      6. PLACEHOLDERS: Use standard brackets like [Student Name] or [University Name] where specific personal data is missing.
+    `;
 
     // 5. Generate the Chapter
     const result = await model.generateContent(prompt);
     let generatedText = result.response.text().trim();
     
-    // Safety cleanup in case Gemini ignores the "No markdown wrappers" rule
-    generatedText = generatedText.replace(/```(md|markdown)?/gi, "").replace(/```/g, "").trim();
+    // 6. Safety Cleanup: Strip out conversational intro phrases if the AI hallucinates them
+    generatedText = generatedText.replace(/```(md|markdown|html)?/gi, "").replace(/```/g, "").trim();
+    generatedText = generatedText.replace(/^(Here is|Sure|Certainly).*?\n/i, "").trim();
 
-    // 6. Auto-Save back to Firestore & Update Progress
+    // 7. Auto-Save back to Firestore & Update Progress
     await updateDoc(projectRef, {
       [`content.${chapterKey}`]: generatedText,
-      progress: projectData.progress + 15 // Bump the progress bar
+      progress: projectData.progress + 5 // Adjusted progress bump so it doesn't max out too fast on small preliminary pages
     });
 
     return NextResponse.json({ chapterContent: generatedText }, { status: 200 });
