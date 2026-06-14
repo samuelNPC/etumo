@@ -4,7 +4,8 @@ import { db } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+// Switched from "pro" to "1.5-flash" to bypass the strict 2 RPM limit
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 export async function POST(req: Request) {
   try {
@@ -45,8 +46,7 @@ export async function POST(req: Request) {
 
     let responseText = result.response.text().trim();
 
-    // --- THE FIX: Aggressively strip Markdown formatting ---
-    // AI models frequently ignore the "no markdown" rule. This prevents JSON.parse from crashing.
+    // Aggressively strip Markdown formatting to prevent JSON.parse crashes
     responseText = responseText.replace(/```json/gi, "").replace(/```/g, "").trim();
 
     let extractedGuidelines;
