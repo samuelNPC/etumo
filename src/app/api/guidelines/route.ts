@@ -19,13 +19,15 @@ export async function POST(req: Request) {
     // Convert file to base64 for Gemini Vision
     const arrayBuffer = await file.arrayBuffer();
     const base64Data = Buffer.from(arrayBuffer).toString("base64");
-    const mimeType = file.type; // handles application/pdf, image/jpeg, image/png
+    
+    // Gemini inlineData strictly supports application/pdf, text/plain, and images.
+    const mimeType = file.type; 
 
     const prompt = `
       You are an academic structuring AI. Analyze this uploaded university research guideline document.
       Extract the required research structure and formatting rules.
       
-      Return ONLY a raw JSON object with this exact structure (no markdown tags):
+      Return ONLY a raw JSON object with this exact structure (no markdown tags, no backticks, no code blocks):
       {
         "formattingRules": "Extracted rules like font size, spacing, citation style (e.g., APA 7th). If not found, write 'Standard Academic Format'.",
         "structure": [
@@ -41,8 +43,22 @@ export async function POST(req: Request) {
       prompt,
     ]);
 
-    const responseText = result.response.text().trim();
-    const extractedGuidelines = JSON.parse(responseText);
+    let responseText = result.response.text().trim();
+
+    // --- THE FIX: Aggressively strip Markdown formatting ---
+    // AI models frequently ignore the "no markdown" rule. This prevents JSON.parse from crashing.
+    responseText = responseText.replace(/```json/gi, "").replace(/```/g, "").trim();
+
+    let extractedGuidelines;
+    try {
+      extractedGuidelines = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error("Failed to parse Gemini output as JSON. Raw output:", responseText);
+      return NextResponse.json(
+        { error: "The AI failed to format the response correctly. Please try clicking apply again." }, 
+        { status: 500 }
+      );
+    }
 
     // Save the dynamic structure directly to the student's project in Firestore
     const projectRef = doc(db, "projects", projectId);
@@ -55,10 +71,16 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, guidelines: extractedGuidelines }, { status: 200 });
 
-  } catch (error) {
-    console.error("Error parsing guidelines:", error);
+  } catch (error: any) {
+    console.error("Backend processing error:", error);
+    
+    // Provide dynamic error messaging depending on what caused the crash
+    const errorMessage = error.message?.includes("MIME type") || error.message?.includes("supported")
+      ? "Unsupported file type. Please save your document as a PDF or TXT file and try again."
+      : "Failed to read the document. Ensure it is not corrupted and try again.";
+
     return NextResponse.json(
-      { error: "Failed to parse the document. Ensure it is a valid PDF or Image." },
+      { error: errorMessage },
       { status: 500 }
     );
   }
