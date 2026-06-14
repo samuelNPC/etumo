@@ -5,7 +5,8 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 // Initialize Gemini 2.5 Pro for deep reasoning and long-form academic writing
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
 
 export async function POST(req: Request) {
   try {
