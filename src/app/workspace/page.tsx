@@ -3,11 +3,10 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 import LockedDocumentViewer from "@/components/LockedDocumentViewer";
 import GuidelineUploader from "@/components/GuidelineUploader";
 
-// Define the shape of our dynamic structure
 interface ChapterStructure {
   key: string;
   label: string;
@@ -28,7 +27,6 @@ interface ProjectData {
   };
 }
 
-// Fallback structure if the user hasn't uploaded specific guidelines yet
 const defaultStructure: ChapterStructure[] = [
   { key: "preliminaryPages", label: "Preliminary Pages" },
   { key: "chapter1", label: "Chapter 1: Introduction" },
@@ -42,12 +40,18 @@ export default function WorkspacePage() {
   const searchParams = useSearchParams();
   const projectId = searchParams.get("id");
 
+  // Core Project State
   const [project, setProject] = useState<ProjectData | null>(null);
   const [activeChapter, setActiveChapter] = useState<string>("preliminaryPages");
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
 
-  // 1. Fetch current project state from Firestore on mount
+  // Supervisor Correction State
+  const [showFeedbackPanel, setShowFeedbackPanel] = useState<boolean>(false);
+  const [feedbackText, setFeedbackText] = useState<string>("");
+  const [feedbackImage, setFeedbackImage] = useState<File | null>(null);
+  const [applyingCorrection, setApplyingCorrection] = useState<boolean>(false);
+
   useEffect(() => {
     if (!projectId) {
       setLoading(false);
@@ -71,15 +75,12 @@ export default function WorkspacePage() {
     fetchProject();
   }, [projectId]);
 
-  // Determine the active structure array
   const currentStructure = project?.guidelines?.isCustomized 
     ? project.guidelines.structure 
     : defaultStructure;
 
-  // Helper to get the human-readable label for the current active tab
   const activeChapterLabel = currentStructure.find(c => c.key === activeChapter)?.label || activeChapter;
 
-  // 2. Trigger the serverless progressive chapter API
   const handleGenerateChapter = async () => {
     if (!projectId || !activeChapter) return;
     setGenerating(true);
@@ -93,7 +94,6 @@ export default function WorkspacePage() {
 
       const data = await res.json();
       if (data.chapterContent) {
-        // Optimistically update frontend UI state immediately
         setProject((prev) => {
           if (!prev) return null;
           return {
@@ -115,11 +115,10 @@ export default function WorkspacePage() {
     }
   };
 
-  // 3. Trigger the DOCX Export API and simulate payment paywall
   const handleDownload = async () => {
     if (!projectId || !activeChapter) return;
 
-    // Intercept with the Paywall Modal
+    // The UGX 20k per chapter structure. 5 Chapters = UGX 100k Total.
     const isPaid = window.confirm(
       `Unlock ${activeChapterLabel} export for UGX 20,000 via Mobile Money?`
     );
@@ -134,7 +133,6 @@ export default function WorkspacePage() {
 
       if (!res.ok) throw new Error("Export failed");
 
-      // Force the browser to save the file silently
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -149,6 +147,44 @@ export default function WorkspacePage() {
     }
   };
 
+  const handleApplyFeedback = async () => {
+    if (!projectId || !activeChapter) return;
+    setApplyingCorrection(true);
+
+    const formData = new FormData();
+    formData.append("projectId", projectId);
+    formData.append("chapterKey", activeChapter);
+    if (feedbackText) formData.append("feedbackText", feedbackText);
+    if (feedbackImage) formData.append("image", feedbackImage);
+
+    try {
+      const res = await fetch("/api/corrections", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setProject((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            content: { ...prev.content, [activeChapter]: data.updatedContent },
+          };
+        });
+        setShowFeedbackPanel(false);
+        setFeedbackText("");
+        setFeedbackImage(null);
+      } else {
+        alert(data.error);
+      }
+    } catch (err) {
+      alert("Network error while submitting feedback.");
+    } finally {
+      setApplyingCorrection(false);
+    }
+  };
+
   if (loading) return <div className="p-8 font-mono text-sm">Synchronizing project workspace hooks...</div>;
   if (!project) return <div className="p-8 font-mono text-sm">Project node not initialized. Return to landing page.</div>;
 
@@ -160,7 +196,6 @@ export default function WorkspacePage() {
         <h2 className="text-2xl font-bold tracking-tight text-gray-900 mt-1">{project.topic}</h2>
       </div>
 
-      {/* Conditionally render the Guideline Uploader if the university format isn't set */}
       {!project.guidelines?.isCustomized && (
         <GuidelineUploader 
           projectId={projectId as string} 
@@ -168,12 +203,15 @@ export default function WorkspacePage() {
         />
       )}
 
-      {/* Tabs navigation for shifting workspace focus */}
+      {/* Tabs navigation */}
       <div className="flex border-b border-gray-300 overflow-x-auto scrollbar-none">
         {currentStructure.map((chapter) => (
           <button
             key={chapter.key}
-            onClick={() => setActiveChapter(chapter.key)}
+            onClick={() => {
+              setActiveChapter(chapter.key);
+              setShowFeedbackPanel(false); // Reset feedback panel when switching tabs
+            }}
             className={`px-4 py-2 text-sm font-medium border-b-2 whitespace-nowrap transition-all ${
               activeChapter === chapter.key
                 ? "border-[#d97706] text-[#d97706] bg-gray-50"
@@ -201,14 +239,14 @@ export default function WorkspacePage() {
             <button
               onClick={handleGenerateChapter}
               disabled={generating}
-              className="bg-black text-white px-4 py-2 text-xs font-bold uppercase hover:bg-gray-800 disabled:bg-gray-400 transition-colors"
+              className="bg-black text-white px-4 py-2 text-xs font-bold uppercase hover:bg-gray-800 disabled:bg-gray-400 transition-colors rounded-none"
             >
               {generating ? "Chaining Memory Context..." : `Draft Section`}
             </button>
           ) : (
             <button
               onClick={handleDownload}
-              className="bg-[#d97706] text-white px-4 py-2 text-xs font-bold uppercase hover:bg-[#b45309] transition-colors"
+              className="bg-[#d97706] text-white px-4 py-2 text-xs font-bold uppercase hover:bg-[#b45309] transition-colors rounded-none"
             >
               Download DOCX (UGX 20,000)
             </button>
@@ -218,6 +256,57 @@ export default function WorkspacePage() {
 
       {/* Secure document render boundary */}
       <LockedDocumentViewer content={project.content ? project.content[activeChapter] : ""} />
+
+      {/* Supervisor Feedback Integration */}
+      {project.content && project.content[activeChapter] && (
+        <div className="mt-2 border border-gray-300 bg-white p-4">
+          {!showFeedbackPanel ? (
+            <button
+              onClick={() => setShowFeedbackPanel(true)}
+              className="w-full bg-gray-100 text-gray-800 border border-gray-300 font-bold py-3 uppercase text-xs hover:bg-gray-200 transition-colors rounded-none"
+            >
+              + Add Supervisor Corrections
+            </button>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <h4 className="font-bold text-sm text-gray-800">Submit Supervisor Feedback</h4>
+              <textarea
+                className="w-full border border-gray-300 p-3 bg-gray-50 outline-none text-sm rounded-none"
+                rows={3}
+                placeholder="Type supervisor's comments here... (e.g., 'Expand on the background of the study')"
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+              />
+              <div className="border border-dashed border-gray-400 p-4 bg-gray-50 text-center relative cursor-pointer hover:bg-gray-100 transition-colors">
+                <input
+                  type="file"
+                  accept="image/png, image/jpeg"
+                  onChange={(e) => setFeedbackImage(e.target.files?.[0] || null)}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+                <span className="text-xs font-bold text-gray-600">
+                  {feedbackImage ? feedbackImage.name : "Or attach a photo of the marked document"}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleApplyFeedback}
+                  disabled={applyingCorrection || (!feedbackText && !feedbackImage)}
+                  className="flex-1 bg-black text-white px-4 py-2 text-xs font-bold uppercase hover:bg-gray-800 disabled:bg-gray-400 transition-colors rounded-none"
+                >
+                  {applyingCorrection ? "Rewriting Chapter..." : "Apply Corrections"}
+                </button>
+                <button
+                  onClick={() => setShowFeedbackPanel(false)}
+                  className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 text-xs font-bold uppercase hover:bg-red-100 transition-colors rounded-none"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
