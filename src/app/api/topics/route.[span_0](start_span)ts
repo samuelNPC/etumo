@@ -1,0 +1,40 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { NextResponse } from "next/server";
+
+// Initialize Gemini using the server-side key
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+// Use Flash for speed and cost-efficiency on simple generation jobs
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+[span_1](start_span)export async function POST(req: Request) {
+  try {
+    // Parse the incoming request body[span_1](end_span)
+    const { course, faculty, interest } = await req.json();
+
+    const prompt = `
+      You are an expert academic research advisor for universities in Uganda.
+      Generate exactly 3 structured academic research topics for a final-year university student.
+      Course: ${course}
+      Faculty: ${faculty}
+      Research Interest: ${interest}
+
+      Format the output strictly as a JSON array of strings. Do not include markdown formatting like \`\`\`json. Just return the raw array.
+      Example: ["Topic 1", "Topic 2", "Topic 3"]
+    `;
+
+    const result = await model.generateContent(prompt);
+    const textResponse = result.response.text().trim();
+    
+    // Convert the AI text response directly into an array
+    const topics = JSON.parse(textResponse);
+
+    [span_2](start_span)// Return the response back to the frontend with a 200 success status[span_2](end_span)
+    return NextResponse.json({ topics }, { status: 200 });
+  } catch (error) {
+    console.error("Error generating topics:", error);
+    return NextResponse.json(
+      { error: "Failed to generate research topics. Please try again." },
+      { status: 500 }
+    );
+  }
+}
