@@ -2,6 +2,11 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
+// STRICT VALIDATION: Loudly crash the build if the core API key is missing
+if (!process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
+  throw new Error("FATAL BUILD ERROR: NEXT_PUBLIC_FIREBASE_API_KEY is missing from Vercel Environment Variables.");
+}
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -11,15 +16,9 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// THE FIX: Only initialize Firebase if we actually have an API key (prevents Vercel build crashes)
-let app;
-if (getApps().length > 0) {
-  app = getApp();
-} else if (process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
-  app = initializeApp(firebaseConfig);
-}
+// Initialize Firebase cleanly
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Safely export the database and auth modules
-export const db = app ? getFirestore(app) : ({} as any);
-export const auth = app ? getAuth(app) : ({} as any);
+export const db = getFirestore(app);
+export const auth = getAuth(app);
 export default app;
