@@ -1,14 +1,11 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-// Initialize Gemini using the server-side key
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-// Use Flash for speed and cost-efficiency on simple generation jobs
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-[span_1](start_span)export async function POST(req: Request) {
+export async function POST(req: Request) {
   try {
-    // Parse the incoming request body[span_1](end_span)
     const { course, faculty, interest } = await req.json();
 
     const prompt = `
@@ -25,15 +22,16 @@ const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(prompt);
     const textResponse = result.response.text().trim();
     
-    // Convert the AI text response directly into an array
-    const topics = JSON.parse(textResponse);
+    // THE FIX: Strip out stubborn markdown wrappers before parsing
+    const cleanText = textResponse.replace(/```json/gi, "").replace(/```/g, "").trim();
+    const topics = JSON.parse(cleanText);
 
-    [span_2](start_span)// Return the response back to the frontend with a 200 success status[span_2](end_span)
     return NextResponse.json({ topics }, { status: 200 });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error generating topics:", error);
+    // Send a clear error message to the frontend
     return NextResponse.json(
-      { error: "Failed to generate research topics. Please try again." },
+      { error: "Failed to generate research topics. Ensure your API key is correct." },
       { status: 500 }
     );
   }
