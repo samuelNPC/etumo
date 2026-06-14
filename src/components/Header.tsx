@@ -88,7 +88,7 @@ export default function Header() {
           {/* Desktop Navigation */}
           <nav className="hidden md:flex gap-8 items-center">
             <Link href="/" className="text-sm font-semibold text-gray-600 hover:text-black transition-colors">Home</Link>
-            <Link href="/workspace" className="text-sm font-semibold text-gray-600 hover:text-black transition-colors">Workspace</Link>
+            <Link href="/dashboard" className="text-sm font-semibold text-gray-600 hover:text-black transition-colors">My Projects</Link>
             <Link href="/originality" className="text-sm font-semibold text-gray-600 hover:text-black transition-colors">Originality center</Link>
             
             {user ? (
@@ -147,7 +147,7 @@ export default function Header() {
           {/* Primary Links (Normal Weight, Black, Line Separators) */}
           <div className="flex flex-col">
             <Link href="/" className="text-lg font-normal text-black py-4 border-b border-gray-200">Home</Link>
-            <Link href="/workspace" className="text-lg font-normal text-black py-4 border-b border-gray-200">Workspace</Link>
+            <Link href="/dashboard" className="text-lg font-normal text-black py-4 border-b border-gray-200">My Projects</Link>
             <Link href="/originality" className="text-lg font-normal text-black py-4 border-b border-gray-200">Originality center</Link>
           </div>
 
