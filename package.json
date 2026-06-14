@@ -9,7 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.11.1",
+    "@google/generative-ai": "latest",
+
     "docx": "^8.5.0",
     "firebase": "^10.12.2",
     "next": "14.2.3",
