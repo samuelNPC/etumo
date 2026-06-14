@@ -43,9 +43,9 @@ export default function Home() {
   };
 
   return (
-    // FIX 1: Removed `min-h-[calc(100vh-4rem)]` and replaced it with `w-full`
-    <div className="relative w-full bg-blue-50 overflow-hidden font-sans">
-      
+    // Added `flex-1` here so the page stretches to the bottom of the flex layout
+    <div className="relative flex-1 w-full bg-blue-50 overflow-hidden font-sans">
+
       {/* --- ANIMATED BACKGROUND SYSTEM --- */}
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes blob {
@@ -75,15 +75,14 @@ export default function Home() {
         <div className="absolute top-1/3 right-1/4 w-[450px] h-[450px] bg-orange-400/40 rounded-full mix-blend-multiply filter blur-[80px] animate-blob animation-delay-2000" />
         <div className="absolute bottom-1/4 left-1/3 w-[500px] h-[500px] bg-red-400/40 rounded-full mix-blend-multiply filter blur-[80px] animate-blob animation-delay-4000" />
         <div className="absolute bottom-1/3 right-1/3 w-[400px] h-[400px] bg-green-400/40 rounded-full mix-blend-multiply filter blur-[80px] animate-blob animation-delay-6000" />
-        
+
         {/* Full-page frosted glass overlay */}
         <div className="absolute inset-0 backdrop-blur-[60px] bg-white/40" />
-        
+
         {/* CSS Dot Grid over the glass */}
         <div className="absolute inset-0 bg-[radial-gradient(#94a3b8_1px,transparent_1px)] [background-size:24px_24px] opacity-40 [mask-image:radial-gradient(ellipse_80%_80%_at_50%_50%,#000_70%,transparent_100%)]" />
       </div>
 
-      {/* FIX 2: Changed `pb-20` to `pb-12` to tighten the gap before the footer */}
       <main className="relative z-10 w-full max-w-5xl mx-auto px-4 pt-16 md:pt-28 pb-12 flex flex-col items-start md:items-center justify-start text-left md:text-center gap-16">
 
         {/* --- TOP SECTION: VALUE PROPOSITION --- */}
