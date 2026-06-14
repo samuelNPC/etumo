@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Force the sharp, edge-to-edge minimalist UI globally */
+* {
+  border-radius: 0px !important;
+}
+
+body {
+  background-color: #ffffff;
+  color: #111827; /* Dark gray for high contrast reading */
+  line-height: 1.6;
+}
+
+/* Security classes to prevent theft of generated chapters */
+.locked-document-viewer {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+@media print {
+  .locked-document-viewer {
+    display: none !important;
+  }
+}
