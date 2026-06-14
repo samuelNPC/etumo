@@ -37,7 +37,7 @@ export default function Footer() {
           <div>
             <h4 className="font-bold text-gray-900 mb-4 tracking-tight">Product</h4>
             <ul className="flex flex-col gap-3">
-              <li><Link href="/workspace" className="text-sm text-gray-500 hover:text-black transition-colors">Workspace</Link></li>
+              <li><Link href="/dashboard" className="text-sm text-gray-500 hover:text-black transition-colors">My Projects</Link></li>
               <li><Link href="/originality" className="text-sm text-gray-500 hover:text-black transition-colors">Originality Center</Link></li>
               <li><Link href="/dashboard" className="text-sm text-gray-500 hover:text-black transition-colors">Dashboard</Link></li>
             </ul>
