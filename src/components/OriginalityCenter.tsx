@@ -9,7 +9,7 @@ export default function OriginalityCenter() {
   const [user, setUser] = useState<User | null>(null);
   const [inputText, setInputText] = useState("");
   const [cleanedResults, setCleanedResults] = useState<string | null>(null);
-  
+
   const [usageCount, setUsageCount] = useState(0);
   const [showSubscription, setShowSubscription] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
@@ -40,7 +40,7 @@ export default function OriginalityCenter() {
         try {
           const userRef = doc(db, "users", currentUser.uid);
           const userSnap = await getDoc(userRef);
-          
+
           if (userSnap.exists()) {
             const data = userSnap.data();
             if (data.lastUsageDate === today) {
@@ -66,7 +66,7 @@ export default function OriginalityCenter() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Handle Text Fixing and Saving Progress
+  // 2. Handle Text Fixing and Saving Progress (Connected to live API)
   const handleFix = async (type: "ai_bypass" | "plagiarism_bypass") => {
     if (usageCount >= FREE_LIMIT) {
       setShowSubscription(true);
@@ -82,13 +82,31 @@ export default function OriginalityCenter() {
     setCleanedResults(null);
     setCopyFeedback(false);
 
-    // Simulate API Delay
-    setTimeout(async () => {
-      const resultText = `[Fixed using ${type === 'ai_bypass' ? 'AI Humanizer' : 'Similarity Bypass'}] ${inputText}`;
-      setCleanedResults(resultText);
-      setIsProcessing(false);
+    try {
+      // Sending data matching YOUR advanced backend API structure
+      const response = await fetch("/api/rewrite", { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          flaggedTexts: [inputText], // Your API expects an array
+          type: type 
+        }),
+      });
 
-      // Update Counts
+      const data = await response.json();
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error || "Server processing failed");
+      }
+
+      // Extracting the rewritten text from your API's specific response structure
+      if (data.success && data.cleanedData && data.cleanedData.length > 0) {
+        setCleanedResults(data.cleanedData[0].rewritten);
+      } else {
+        throw new Error("Failed to parse the AI response.");
+      }
+
+      // --- BILLING & USAGE UPDATE LOGIC ---
       const newCount = usageCount + 1;
       const today = new Date().toDateString();
       setUsageCount(newCount);
@@ -108,7 +126,12 @@ export default function OriginalityCenter() {
           console.error("Error syncing to Firebase:", error);
         }
       }
-    }, 1500);
+    } catch (error) {
+      alert("Error processing text. Check your connection and try again.");
+      console.error(error);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // 3. Handle Clipboard Copy
@@ -130,7 +153,7 @@ export default function OriginalityCenter() {
 
   return (
     <div className="space-y-8">
-      
+
       {/* SECTION 1: Text Remediation (Free Quota) */}
       <div className="border border-gray-300 bg-white p-6 shadow-sm">
         <div className="flex justify-between items-start mb-4">
@@ -139,14 +162,14 @@ export default function OriginalityCenter() {
             {FREE_LIMIT - usageCount} Free Uses Left Today
           </span>
         </div>
-        
+
         <textarea
           className="w-full border border-gray-300 p-4 bg-gray-50 outline-none text-sm rounded-none focus:border-black resize-y min-h-[150px] mb-4"
           placeholder="Paste flagged paragraphs from Turnitin or AI detectors here..."
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
         />
-        
+
         <div className="flex flex-col sm:flex-row gap-4 mb-4">
           <button 
             onClick={() => handleFix("plagiarism_bypass")} 
@@ -168,8 +191,8 @@ export default function OriginalityCenter() {
         {cleanedResults && (
           <div className="bg-green-50 p-6 border border-green-200 mt-6 relative animate-in fade-in duration-300">
             <h3 className="font-bold text-xs uppercase tracking-wider text-green-900 mb-2">Remediated Text</h3>
-            <p className="text-sm text-green-900 pr-8">{cleanedResults}</p>
-            
+            <p className="text-sm text-green-900 pr-8 whitespace-pre-wrap">{cleanedResults}</p>
+
             <button 
               onClick={handleCopy}
               className="absolute top-4 right-4 p-2 text-green-700 hover:text-green-900 hover:bg-green-100 transition-colors"
@@ -180,7 +203,7 @@ export default function OriginalityCenter() {
                 <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
               </svg>
             </button>
-            
+
             {copyFeedback && (
               <p className="text-[10px] font-bold uppercase tracking-widest text-green-700 mt-4 animate-in fade-in">
                 ✓ Text copied to clipboard
@@ -196,7 +219,7 @@ export default function OriginalityCenter() {
         <p className="text-sm text-gray-600 mb-6 max-w-md mx-auto">
           Skip the copy-pasting. Upload your entire PDF or Word document, and our engine will fix the formatting and similarity in one go.
         </p>
-        
+
         <div className="border-2 border-dashed border-gray-400 p-8 bg-white mb-6 relative cursor-pointer hover:bg-gray-50 transition-colors">
           <input type="file" accept=".pdf,.doc,.docx" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
           <span className="font-bold text-sm text-gray-700 uppercase tracking-widest">Select PDF or Word File</span>
@@ -221,7 +244,7 @@ export default function OriginalityCenter() {
             >
               ✕
             </button>
-            
+
             <div className="w-16 h-16 bg-orange-100 border-2 border-[#d97706] rounded-full flex items-center justify-center mx-auto mb-4">
               <span className="text-[#d97706] text-2xl font-bold">!</span>
             </div>
@@ -229,7 +252,7 @@ export default function OriginalityCenter() {
             <p className="text-sm text-gray-500 mb-8">
               You have used your 20 free text removals for today. You can wait until tomorrow, or unlock bulk removals right now.
             </p>
-            
+
             <div className="bg-gray-50 border border-gray-200 p-4 mb-6">
               <h4 className="font-bold text-gray-900 uppercase tracking-wider text-sm mb-1">Pro Tier</h4>
               <p className="text-xs text-gray-600">Unlock 100 text removals for uninterrupted workflow.</p>
