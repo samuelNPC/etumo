@@ -2,7 +2,6 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-// Your client-side web app's Firebase configuration
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -12,10 +11,15 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase (Prevents duplicate initialization on hot-reloads)
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+// THE FIX: Only initialize Firebase if we actually have an API key (prevents Vercel build crashes)
+let app;
+if (getApps().length > 0) {
+  app = getApp();
+} else if (process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
+  app = initializeApp(firebaseConfig);
+}
 
-// Initialize Firestore (Database) and Auth services
-export const db = getFirestore(app);
-export const auth = getAuth(app);
+// Safely export the database and auth modules
+export const db = app ? getFirestore(app) : ({} as any);
+export const auth = app ? getAuth(app) : ({} as any);
 export default app;
