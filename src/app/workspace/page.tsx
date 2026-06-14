@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
@@ -36,17 +36,16 @@ const defaultStructure: ChapterStructure[] = [
   { key: "chapter5", label: "Chapter 5: Conclusion" },
 ];
 
-export default function WorkspacePage() {
+// 1. We move the main logic into a child component
+function WorkspaceContent() {
   const searchParams = useSearchParams();
   const projectId = searchParams.get("id");
 
-  // Core Project State
   const [project, setProject] = useState<ProjectData | null>(null);
   const [activeChapter, setActiveChapter] = useState<string>("preliminaryPages");
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
 
-  // Supervisor Correction State
   const [showFeedbackPanel, setShowFeedbackPanel] = useState<boolean>(false);
   const [feedbackText, setFeedbackText] = useState<string>("");
   const [feedbackImage, setFeedbackImage] = useState<File | null>(null);
@@ -118,7 +117,6 @@ export default function WorkspacePage() {
   const handleDownload = async () => {
     if (!projectId || !activeChapter) return;
 
-    // The UGX 20k per chapter structure. 5 Chapters = UGX 100k Total.
     const isPaid = window.confirm(
       `Unlock ${activeChapterLabel} export for UGX 20,000 via Mobile Money?`
     );
@@ -190,7 +188,6 @@ export default function WorkspacePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Top Meta Details bar */}
       <div className="border-b border-gray-200 pb-4">
         <span className="text-xs font-mono uppercase text-[#d97706] tracking-wider font-bold">{project.course} Project Workspace</span>
         <h2 className="text-2xl font-bold tracking-tight text-gray-900 mt-1">{project.topic}</h2>
@@ -203,14 +200,13 @@ export default function WorkspacePage() {
         />
       )}
 
-      {/* Tabs navigation */}
       <div className="flex border-b border-gray-300 overflow-x-auto scrollbar-none">
         {currentStructure.map((chapter) => (
           <button
             key={chapter.key}
             onClick={() => {
               setActiveChapter(chapter.key);
-              setShowFeedbackPanel(false); // Reset feedback panel when switching tabs
+              setShowFeedbackPanel(false);
             }}
             className={`px-4 py-2 text-sm font-medium border-b-2 whitespace-nowrap transition-all ${
               activeChapter === chapter.key
@@ -223,7 +219,6 @@ export default function WorkspacePage() {
         ))}
       </div>
 
-      {/* Control bar: Generate / Pay Actions */}
       <div className="flex items-center justify-between bg-gray-50 border border-gray-300 p-4">
         <div>
           <h4 className="font-bold text-sm text-gray-800">Viewing: {activeChapterLabel}</h4>
@@ -254,10 +249,8 @@ export default function WorkspacePage() {
         </div>
       </div>
 
-      {/* Secure document render boundary */}
       <LockedDocumentViewer content={project.content ? project.content[activeChapter] : ""} />
 
-      {/* Supervisor Feedback Integration */}
       {project.content && project.content[activeChapter] && (
         <div className="mt-2 border border-gray-300 bg-white p-4">
           {!showFeedbackPanel ? (
@@ -308,5 +301,14 @@ export default function WorkspacePage() {
         </div>
       )}
     </div>
+  );
+}
+
+// 2. The default export simply wraps the logic in a Suspense boundary
+export default function WorkspacePage() {
+  return (
+    <Suspense fallback={<div className="p-8 font-mono text-sm">Initializing workspace engine...</div>}>
+      <WorkspaceContent />
+    </Suspense>
   );
 }
