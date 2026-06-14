@@ -10,8 +10,8 @@ import AuthModal from "@/components/AuthModal";
 export default function Home() {
   const router = useRouter();
   
-  // App Mode State
-  const [inputMode, setInputMode] = useState<"generate" | "custom">("generate");
+  // App Mode State starts as null so no form is shown until they pick a checkbox
+  const [inputMode, setInputMode] = useState<"generate" | "custom" | null>(null);
   
   // Form States
   const [course, setCourse] = useState("");
@@ -107,128 +107,124 @@ export default function Home() {
         </div>
       )}
 
-      {/* ACCORDION 1: Generate Topic */}
-      <div className="border border-gray-300 bg-white mb-4 shadow-sm transition-all">
-        <label 
-          className={`flex items-center p-5 cursor-pointer transition-colors ${
-            inputMode === "generate" ? "bg-gray-50 border-b border-gray-300" : "hover:bg-gray-50"
-          }`}
-        >
-          <input 
-            type="radio" 
-            name="topicMode" 
-            checked={inputMode === "generate"} 
-            onChange={() => setInputMode("generate")} 
-            className="mr-4 w-4 h-4 accent-[#d97706] cursor-pointer"
-          />
-          <span className="font-bold text-sm uppercase tracking-wider text-gray-900">
-            Generate New Topic
-          </span>
-        </label>
-
-        {inputMode === "generate" && (
-          <div className="p-6 bg-gray-50 animate-in slide-in-from-top-2 fade-in duration-200">
-            <form onSubmit={generateTopics} className="flex flex-col gap-4">
-              <input
-                type="text"
-                placeholder="What is your course? (e.g., Procurement)"
-                className="border border-gray-400 p-3 w-full bg-white outline-none rounded-none focus:border-black"
-                value={course}
-                onChange={(e) => setCourse(e.target.value)}
-                required
+      {/* NEW DECISION WIZARD */}
+      <div className="mb-6 border border-gray-300 bg-white p-6 shadow-sm">
+        <h2 className="text-xl font-bold text-gray-900 mb-1">Lets get you started ...</h2>
+        <p className="text-sm text-gray-500 mb-6">Sub test pick one option below .</p>
+        
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 border border-gray-200 bg-gray-50 p-4">
+          <span className="font-bold text-sm text-gray-800 uppercase tracking-wider">Do you have a research topic ?</span>
+          
+          <div className="flex gap-8 sm:ml-auto">
+            {/* Custom Topic Checkbox (Yes) */}
+            <label className="flex items-center cursor-pointer gap-3 group">
+              <input 
+                type="checkbox" 
+                checked={inputMode === "custom"} 
+                onChange={() => setInputMode(inputMode === "custom" ? null : "custom")} 
+                className="w-5 h-5 border-gray-400 rounded-none accent-black cursor-pointer transition-all"
               />
-              <input
-                type="text"
-                placeholder="What is your research interest? (e.g., Digital Systems)"
-                className="border border-gray-400 p-3 w-full bg-white outline-none rounded-none focus:border-black"
-                value={interest}
-                onChange={(e) => setInterest(e.target.value)}
-                required
+              <span className="font-bold text-sm uppercase text-gray-700 group-hover:text-black">Yes</span>
+            </label>
+            
+            {/* Generate Topic Checkbox (No) */}
+            <label className="flex items-center cursor-pointer gap-3 group">
+              <input 
+                type="checkbox" 
+                checked={inputMode === "generate"} 
+                onChange={() => setInputMode(inputMode === "generate" ? null : "generate")} 
+                className="w-5 h-5 border-gray-400 rounded-none accent-[#d97706] cursor-pointer transition-all"
               />
-              <button
-                type="submit"
-                disabled={loading}
-                className="bg-[#d97706] text-white font-bold p-3 w-full hover:bg-[#b45309] transition-colors disabled:bg-gray-400 rounded-none uppercase tracking-wider text-sm"
-              >
-                {loading ? "Scanning Academic Matrix..." : "Generate Research Topics"}
-              </button>
-            </form>
-
-            {/* Render AI Topics List inside the accordion */}
-            {topics.length > 0 && (
-              <div className="mt-6 border-t border-gray-300 pt-6">
-                <h3 className="font-bold text-sm uppercase tracking-wider mb-4 text-gray-800">Select a Topic to Continue:</h3>
-                <ul className="flex flex-col gap-3">
-                  {topics.map((topic, index) => (
-                    <li key={index}>
-                      <button 
-                        onClick={() => handleLockTopic(topic)}
-                        className="w-full text-left border border-gray-300 p-4 hover:border-[#d97706] hover:bg-orange-50 bg-white transition-all font-medium text-gray-900 rounded-none shadow-sm"
-                      >
-                        {topic}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              <span className="font-bold text-sm uppercase text-gray-700 group-hover:text-[#d97706]">No</span>
+            </label>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* ACCORDION 2: Lock In Your Topic */}
-      <div className="border border-gray-300 bg-white mb-8 shadow-sm transition-all">
-        <label 
-          className={`flex items-center p-5 cursor-pointer transition-colors ${
-            inputMode === "custom" ? "bg-gray-50 border-b border-gray-300" : "hover:bg-gray-50"
-          }`}
-        >
-          <input 
-            type="radio" 
-            name="topicMode" 
-            checked={inputMode === "custom"} 
-            onChange={() => setInputMode("custom")} 
-            className="mr-4 w-4 h-4 accent-[#d97706] cursor-pointer"
-          />
-          <span className="font-bold text-sm uppercase tracking-wider text-gray-900">
-            Lock In Your Topic
-          </span>
-        </label>
-
-        {inputMode === "custom" && (
-          <div className="p-6 bg-gray-50 animate-in slide-in-from-top-2 fade-in duration-200">
-            <form 
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleLockTopic(customTopic);
-              }} 
-              className="flex flex-col gap-4"
+      {/* FORM PATH A: Custom Topic (They clicked YES) */}
+      {inputMode === "custom" && (
+        <div className="animate-in fade-in slide-in-from-top-2 duration-300 border border-gray-300 p-6 bg-gray-50 mb-8 shadow-sm">
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleLockTopic(customTopic);
+            }} 
+            className="flex flex-col gap-4"
+          >
+            <textarea
+              placeholder="Type your approved research topic here..."
+              rows={3}
+              className="border border-gray-400 p-3 w-full bg-white outline-none rounded-none focus:border-black resize-none"
+              value={customTopic}
+              onChange={(e) => setCustomTopic(e.target.value)}
+              required
+            />
+             <input
+              type="text"
+              placeholder="What is your course? (Optional)"
+              className="border border-gray-400 p-3 w-full bg-white outline-none rounded-none focus:border-black"
+              value={course}
+              onChange={(e) => setCourse(e.target.value)}
+            />
+            <button
+              type="submit"
+              className="bg-black text-white font-bold p-3 w-full hover:bg-gray-800 transition-colors rounded-none uppercase tracking-wider text-sm"
             >
-              <textarea
-                placeholder="Type your approved research topic here..."
-                rows={3}
-                className="border border-gray-400 p-3 w-full bg-white outline-none rounded-none focus:border-black resize-none"
-                value={customTopic}
-                onChange={(e) => setCustomTopic(e.target.value)}
-                required
-              />
-               <input
-                type="text"
-                placeholder="What is your course? (Optional)"
-                className="border border-gray-400 p-3 w-full bg-white outline-none rounded-none focus:border-black"
-                value={course}
-                onChange={(e) => setCourse(e.target.value)}
-              />
-              <button
-                type="submit"
-                className="bg-black text-white font-bold p-3 w-full hover:bg-gray-800 transition-colors rounded-none uppercase tracking-wider text-sm"
-              >
-                Lock In Topic
-              </button>
-            </form>
-          </div>
-        )}
-      </div>
+              Lock In Topic
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* FORM PATH B: Generate Topic (They clicked NO) */}
+      {inputMode === "generate" && (
+        <div className="animate-in fade-in slide-in-from-top-2 duration-300 border border-gray-300 p-6 bg-gray-50 mb-8 shadow-sm">
+          <form onSubmit={generateTopics} className="flex flex-col gap-4">
+            <input
+              type="text"
+              placeholder="What is your course? (e.g., Procurement)"
+              className="border border-gray-400 p-3 w-full bg-white outline-none rounded-none focus:border-black"
+              value={course}
+              onChange={(e) => setCourse(e.target.value)}
+              required
+            />
+            <input
+              type="text"
+              placeholder="What is your research interest? (e.g., Digital Systems)"
+              className="border border-gray-400 p-3 w-full bg-white outline-none rounded-none focus:border-black"
+              value={interest}
+              onChange={(e) => setInterest(e.target.value)}
+              required
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="bg-[#d97706] text-white font-bold p-3 w-full hover:bg-[#b45309] transition-colors disabled:bg-gray-400 rounded-none uppercase tracking-wider text-sm"
+            >
+              {loading ? "Scanning Academic Matrix..." : "Generate Research Topics"}
+            </button>
+          </form>
+
+          {/* Render AI Topics List inside the active panel */}
+          {topics.length > 0 && (
+            <div className="mt-6 border-t border-gray-300 pt-6">
+              <h3 className="font-bold text-sm uppercase tracking-wider mb-4 text-gray-800">Select a Topic to Continue:</h3>
+              <ul className="flex flex-col gap-3">
+                {topics.map((topic, index) => (
+                  <li key={index}>
+                    <button 
+                      onClick={() => handleLockTopic(topic)}
+                      className="w-full text-left border border-gray-300 p-4 hover:border-[#d97706] hover:bg-orange-50 bg-white transition-all font-medium text-gray-900 rounded-none shadow-sm"
+                    >
+                      {topic}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       <AuthModal 
         isOpen={showAuthModal} 
