@@ -78,7 +78,7 @@ function WorkspaceContent() {
         if (docSnap.exists()) {
           const data = docSnap.data() as ProjectData;
           setProject(data);
-          
+
           // SMART ROUTING: If they already uploaded guidelines, skip the upload screen and drop them on chapter 1
           if (data.guidelines?.isCustomized && activeChapter === "guidelines") {
             const structure = data.guidelines.structure || defaultStructure;
@@ -105,7 +105,7 @@ function WorkspaceContent() {
     if (docSnap.exists()) {
       const updatedProject = docSnap.data() as ProjectData;
       setProject(updatedProject);
-      
+
       // Auto-slide to the next chapter
       const structure = updatedProject.guidelines?.structure || defaultStructure;
       if (structure.length > 1) {
@@ -206,6 +206,8 @@ function WorkspaceContent() {
     }
   };
 
+  const currentStructure = project?.guidelines?.isCustomized ? project.guidelines.structure : defaultStructure;
+
   const handleDownload = async () => {
     if (!projectId || !activeChapter) return;
     const isPaid = window.confirm(`Unlock export for UGX 20,000 via Mobile Money?`);
@@ -220,11 +222,15 @@ function WorkspaceContent() {
 
       if (!res.ok) throw new Error("Export failed");
 
+      // Extract the human-readable label and format it for a clean filename
+      const currentLabel = currentStructure.find(c => c.key === activeChapter)?.label || activeChapter;
+      const cleanFileName = currentLabel.replace(/\s+/g, "_");
+
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${activeChapter}_formatted.docx`;
+      a.download = `${cleanFileName}_formatted.docx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -390,7 +396,6 @@ function WorkspaceContent() {
   // ==========================================
   if (!project) return <div className="p-8 font-mono text-sm text-center mt-10">Project data corrupted. Please create a new project.</div>;
 
-  const currentStructure = project?.guidelines?.isCustomized ? project.guidelines.structure : defaultStructure;
   const activeChapterLabel = currentStructure.find(c => c.key === activeChapter)?.label || activeChapter;
   const isGuidelinesUploaded = project?.guidelines?.isCustomized === true;
 
@@ -420,7 +425,7 @@ function WorkspaceContent() {
         <div className="flex-1 w-full max-w-full overflow-hidden">
           {activeChapter === "guidelines" ? (
             <div className="animate-in fade-in duration-300">
-              
+
               {/* SMART UI: Show success state instead of uploader if already configured */}
               {isGuidelinesUploaded ? (
                 <div className="bg-green-50 border border-green-200 p-8 rounded-xl text-center shadow-sm">
