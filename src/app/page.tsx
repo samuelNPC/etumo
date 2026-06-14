@@ -43,14 +43,14 @@ export default function Home() {
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-4rem)] bg-[#fafafa] overflow-hidden font-sans flex items-center">
+    <div className="relative min-h-[calc(100vh-4rem)] bg-blue-50 overflow-hidden font-sans">
       
       {/* --- ANIMATED BACKGROUND SYSTEM --- */}
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes blob {
           0% { transform: translate(0px, 0px) scale(1); }
-          33% { transform: translate(40px, -60px) scale(1.1); }
-          66% { transform: translate(-30px, 30px) scale(0.9); }
+          33% { transform: translate(30px, -50px) scale(1.1); }
+          66% { transform: translate(-20px, 20px) scale(0.9); }
           100% { transform: translate(0px, 0px) scale(1); }
         }
         .animate-blob {
@@ -62,38 +62,42 @@ export default function Home() {
         .animation-delay-4000 {
           animation-delay: 4s;
         }
+        .animation-delay-6000 {
+          animation-delay: 6s;
+        }
       `}} />
 
       {/* --- MOVING COLORS & GLASS EFFECT --- */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden flex justify-center items-center">
-        {/* Animated Orbs */}
-        <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-blue-400/40 rounded-full mix-blend-multiply filter blur-[80px] animate-blob" />
-        <div className="absolute top-1/3 right-1/4 w-[450px] h-[450px] bg-purple-400/40 rounded-full mix-blend-multiply filter blur-[80px] animate-blob animation-delay-2000" />
-        <div className="absolute bottom-1/4 left-1/3 w-[500px] h-[500px] bg-green-300/40 rounded-full mix-blend-multiply filter blur-[80px] animate-blob animation-delay-4000" />
+        {/* Bright Animated Orbs (Yellow, Orange, Light Red, Green) */}
+        <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-yellow-400/50 rounded-full mix-blend-multiply filter blur-[80px] animate-blob" />
+        <div className="absolute top-1/3 right-1/4 w-[450px] h-[450px] bg-orange-400/40 rounded-full mix-blend-multiply filter blur-[80px] animate-blob animation-delay-2000" />
+        <div className="absolute bottom-1/4 left-1/3 w-[500px] h-[500px] bg-red-400/40 rounded-full mix-blend-multiply filter blur-[80px] animate-blob animation-delay-4000" />
+        <div className="absolute bottom-1/3 right-1/3 w-[400px] h-[400px] bg-green-400/40 rounded-full mix-blend-multiply filter blur-[80px] animate-blob animation-delay-6000" />
         
         {/* Full-page frosted glass overlay */}
-        <div className="absolute inset-0 backdrop-blur-[50px] bg-white/40" />
+        <div className="absolute inset-0 backdrop-blur-[60px] bg-white/40" />
         
         {/* CSS Dot Grid over the glass */}
-        <div className="absolute inset-0 bg-[radial-gradient(#d1d5db_1px,transparent_1px)] [background-size:24px_24px] opacity-60 [mask-image:radial-gradient(ellipse_80%_80%_at_50%_50%,#000_70%,transparent_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(#94a3b8_1px,transparent_1px)] [background-size:24px_24px] opacity-40 [mask-image:radial-gradient(ellipse_80%_80%_at_50%_50%,#000_70%,transparent_100%)]" />
       </div>
 
-      {/* --- MAIN LAYOUT (Spread out with larger max-width and gaps) --- */}
-      <main className="relative z-10 w-full max-w-6xl mx-auto p-4 sm:p-8 flex flex-col md:flex-row gap-16 md:gap-24 lg:gap-32 items-center justify-between">
+      {/* --- MAIN LAYOUT (Fully Stacked & Centered) --- */}
+      <main className="relative z-10 w-full max-w-4xl mx-auto px-4 pt-16 md:pt-28 pb-20 flex flex-col items-center justify-start text-center gap-16">
 
-        {/* --- LEFT COLUMN: VALUE PROPOSITION --- */}
-        <div className="flex-1 w-full animate-in slide-in-from-left-4 fade-in duration-700">
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black mb-8 tracking-tighter text-[#0f172a] leading-[1.05]">
-            Where research <br className="hidden sm:block" /> gets done.
+        {/* --- TOP SECTION: VALUE PROPOSITION --- */}
+        <div className="w-full flex flex-col items-center animate-in slide-in-from-bottom-4 fade-in duration-700">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black mb-6 tracking-tighter text-[#0f172a] leading-[1.1]">
+            Where research gets done.
           </h1>
-          <p className="text-base sm:text-lg md:text-xl text-gray-700 mb-12 max-w-lg font-medium leading-relaxed">
+          <p className="text-base sm:text-lg md:text-xl text-gray-700 mb-10 max-w-2xl font-medium leading-relaxed">
             An AI-powered workspace that helps students and writers move from idea to submission-ready documents faster.
           </p>
 
-          {/* Left-Aligned Value Bullets with Colorful Icons */}
-          <div className="flex flex-col gap-5 text-base font-bold text-gray-800">
+          {/* Centered Value Bullets */}
+          <div className="flex flex-col items-center gap-5 text-base font-bold text-gray-800">
             {["Topic Generation", "Chapter Structuring", "Format & Export"].map((feature, idx) => {
-              const bgColors = ["bg-blue-500", "bg-purple-500", "bg-green-500"];
+              const bgColors = ["bg-blue-500", "bg-orange-500", "bg-green-500"];
               return (
                 <span key={idx} className="flex items-center gap-4">
                   <span className={`flex items-center justify-center w-6 h-6 ${bgColors[idx]} text-white rounded-sm shadow-sm`}>
@@ -108,23 +112,27 @@ export default function Home() {
           </div>
         </div>
 
-        {/* --- RIGHT COLUMN: INTENT BUTTONS --- */}
-        <div className="w-full md:w-[500px] shrink-0 animate-in slide-in-from-right-4 fade-in duration-700 delay-100">
-          <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight mb-6">Let's set up your workspace</h2>
+        {/* --- BOTTOM SECTION: INTENT BUTTONS --- */}
+        <div className="w-full max-w-xl flex flex-col items-center animate-in slide-in-from-bottom-4 fade-in duration-700 delay-100">
+          <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight mb-8">
+            Let's set up your workspace
+          </h2>
 
-          <div className="flex flex-col gap-5">
+          <div className="w-full flex flex-col gap-6">
             {/* Button 1: Custom Topic Intent */}
             <button 
               onClick={() => handleActionClick("custom")}
-              className="group w-full text-left p-6 sm:p-8 bg-white/70 backdrop-blur-md border border-white/50 rounded-xl shadow-lg hover:border-blue-400 hover:shadow-xl transition-all duration-300 flex items-center justify-between"
+              className="group w-full text-center sm:text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-blue-400 hover:shadow-xl transition-all duration-300 flex flex-col sm:flex-row items-center justify-between gap-4"
             >
-              <div className="pr-4">
-                <h3 className="font-bold text-xl text-gray-900 mb-2 group-hover:text-blue-600 transition-colors">I have a research topic</h3>
+              <div className="flex-1">
+                <h3 className="font-bold text-xl text-gray-900 mb-2 group-hover:text-blue-600 transition-colors">
+                  I have a research topic
+                </h3>
                 <p className="text-sm text-gray-600 font-medium leading-relaxed">
                   Start structuring chapters based on your approved idea.
                 </p>
               </div>
-              <div className="shrink-0 text-yellow-500 transition-transform transform group-hover:translate-x-2">
+              <div className="shrink-0 text-yellow-500 transition-transform transform group-hover:translate-x-1 sm:group-hover:translate-x-2">
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
                 </svg>
@@ -134,15 +142,17 @@ export default function Home() {
             {/* Button 2: Generate Topic Intent */}
             <button 
               onClick={() => handleActionClick("generate")}
-              className="group w-full text-left p-6 sm:p-8 bg-white/70 backdrop-blur-md border border-white/50 rounded-xl shadow-lg hover:border-purple-400 hover:shadow-xl transition-all duration-300 flex items-center justify-between"
+              className="group w-full text-center sm:text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-orange-400 hover:shadow-xl transition-all duration-300 flex flex-col sm:flex-row items-center justify-between gap-4"
             >
-              <div className="pr-4">
-                <h3 className="font-bold text-xl text-gray-900 mb-2 group-hover:text-purple-600 transition-colors">I need a topic idea</h3>
+              <div className="flex-1">
+                <h3 className="font-bold text-xl text-gray-900 mb-2 group-hover:text-orange-600 transition-colors">
+                  I need a topic idea
+                </h3>
                 <p className="text-sm text-gray-600 font-medium leading-relaxed">
                   Let our AI suggest topics aligned with your course.
                 </p>
               </div>
-              <div className="shrink-0 text-yellow-500 transition-transform transform group-hover:translate-x-2">
+              <div className="shrink-0 text-yellow-500 transition-transform transform group-hover:translate-x-1 sm:group-hover:translate-x-2">
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
                 </svg>
@@ -150,13 +160,12 @@ export default function Home() {
             </button>
           </div>
 
-          <div className="mt-10 text-left">
+          <div className="mt-10">
             <Link 
               href="/originality" 
-              className="inline-flex items-center gap-2 text-sm font-black text-red-600 underline decoration-orange-500 decoration-[3px] underline-offset-4 hover:text-red-700 transition-colors uppercase tracking-widest"
+              className="inline-block text-sm font-black text-red-600 underline decoration-orange-500 decoration-[3px] underline-offset-4 hover:text-red-700 transition-colors tracking-widest"
             >
-              Need to fix Similarity first? 
-              <span aria-hidden="true" className="text-yellow-500 text-xl leading-none no-underline">&rarr;</span>
+              Need to fix similarity first?
             </Link>
           </div>
         </div>
