@@ -76,7 +76,16 @@ function WorkspaceContent() {
         const docRef = doc(db, "projects", projectId);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setProject(docSnap.data() as ProjectData);
+          const data = docSnap.data() as ProjectData;
+          setProject(data);
+          
+          // SMART ROUTING: If they already uploaded guidelines, skip the upload screen and drop them on chapter 1
+          if (data.guidelines?.isCustomized && activeChapter === "guidelines") {
+            const structure = data.guidelines.structure || defaultStructure;
+            if (structure.length > 1) {
+              setActiveChapter(structure[1].key); 
+            }
+          }
         }
       } catch (err) {
         console.error("Failed to load project:", err);
@@ -87,6 +96,23 @@ function WorkspaceContent() {
 
     fetchProject();
   }, [projectId]);
+
+  // SMART UI: Handles the smooth transition after upload without refreshing the whole page
+  const handleGuidelinesComplete = async () => {
+    if (!projectId) return;
+    const docRef = doc(db, "projects", projectId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const updatedProject = docSnap.data() as ProjectData;
+      setProject(updatedProject);
+      
+      // Auto-slide to the next chapter
+      const structure = updatedProject.guidelines?.structure || defaultStructure;
+      if (structure.length > 1) {
+        setActiveChapter(structure[1].key);
+      }
+    }
+  };
 
   // ==========================================
   // WIZARD LOGIC: Topic Generation & Creation
@@ -394,15 +420,35 @@ function WorkspaceContent() {
         <div className="flex-1 w-full max-w-full overflow-hidden">
           {activeChapter === "guidelines" ? (
             <div className="animate-in fade-in duration-300">
-              <div className="bg-orange-50 border border-orange-200 p-4 mb-6 rounded-xl">
-                <h3 className="font-bold text-orange-900 text-sm uppercase tracking-wider mb-1">Crucial First Step</h3>
-                {/* TEXT UPDATED HERE TO REFLECT BROADER DOCUMENT ACCEPTANCE */}
-                <p className="text-orange-800 text-xs">Upload your university's research handbook or typing guidelines here (PDF, Word Document, TXT, or Image). All subsequent chapters are strictly locked until the AI learns your exact formatting rules.</p>
-              </div>
-              <GuidelineUploader 
-                projectId={projectId as string} 
-                onComplete={() => window.location.reload()} 
-              />
+              
+              {/* SMART UI: Show success state instead of uploader if already configured */}
+              {isGuidelinesUploaded ? (
+                <div className="bg-green-50 border border-green-200 p-8 rounded-xl text-center shadow-sm">
+                  <div className="w-16 h-16 bg-green-100 text-[#34A853] rounded-full flex items-center justify-center mx-auto mb-4">
+                     <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-green-900 mb-2">Guidelines Configured Successfully!</h3>
+                  <p className="text-green-800 text-sm mb-8 font-medium">Your workspace has been perfectly adapted to your university's exact formatting rules.</p>
+                  <button 
+                    onClick={() => setActiveChapter(currentStructure[1]?.key || "preliminaryPages")} 
+                    className="bg-[#34A853] text-white font-bold py-3 px-8 rounded-xl hover:bg-green-600 transition-colors shadow-md"
+                  >
+                    Start Drafting Next Section &rarr;
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-orange-50 border border-orange-200 p-4 mb-6 rounded-xl">
+                    <h3 className="font-bold text-orange-900 text-sm uppercase tracking-wider mb-1">Crucial First Step</h3>
+                    <p className="text-orange-800 text-xs">Upload your university's research handbook or typing guidelines here (PDF, TXT, or Image). All subsequent chapters are strictly locked until the AI learns your exact formatting rules.</p>
+                  </div>
+                  <GuidelineUploader 
+                    projectId={projectId as string} 
+                    onComplete={handleGuidelinesComplete} 
+                  />
+                </>
+              )}
+
             </div>
           ) : (
             <div className="flex flex-col gap-4 animate-in fade-in duration-300">
