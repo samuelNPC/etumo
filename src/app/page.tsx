@@ -82,11 +82,11 @@ export default function Home() {
         <div className="absolute inset-0 bg-[radial-gradient(#94a3b8_1px,transparent_1px)] [background-size:24px_24px] opacity-40 [mask-image:radial-gradient(ellipse_80%_80%_at_50%_50%,#000_70%,transparent_100%)]" />
       </div>
 
-      {/* --- MAIN LAYOUT (Fully Stacked & Centered) --- */}
-      <main className="relative z-10 w-full max-w-4xl mx-auto px-4 pt-16 md:pt-28 pb-20 flex flex-col items-center justify-start text-center gap-16">
+      {/* --- MAIN LAYOUT (Left on Mobile, Centered on Desktop) --- */}
+      <main className="relative z-10 w-full max-w-5xl mx-auto px-4 pt-16 md:pt-28 pb-20 flex flex-col items-start md:items-center justify-start text-left md:text-center gap-16">
 
         {/* --- TOP SECTION: VALUE PROPOSITION --- */}
-        <div className="w-full flex flex-col items-center animate-in slide-in-from-bottom-4 fade-in duration-700">
+        <div className="w-full flex flex-col items-start md:items-center animate-in slide-in-from-bottom-4 fade-in duration-700">
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black mb-6 tracking-tighter text-[#0f172a] leading-[1.1]">
             Where research gets done.
           </h1>
@@ -94,12 +94,12 @@ export default function Home() {
             An AI-powered workspace that helps students and writers move from idea to submission-ready documents faster.
           </p>
 
-          {/* Centered Value Bullets */}
-          <div className="flex flex-col items-center gap-5 text-base font-bold text-gray-800">
+          {/* Features: Stacked on mobile, Row on desktop */}
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-start md:justify-center gap-5 md:gap-10 text-base font-bold text-gray-800">
             {["Topic Generation", "Chapter Structuring", "Format & Export"].map((feature, idx) => {
               const bgColors = ["bg-blue-500", "bg-orange-500", "bg-green-500"];
               return (
-                <span key={idx} className="flex items-center gap-4">
+                <span key={idx} className="flex items-center gap-3">
                   <span className={`flex items-center justify-center w-6 h-6 ${bgColors[idx]} text-white rounded-sm shadow-sm`}>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3.5} d="M5 13l4 4L19 7" />
@@ -113,7 +113,7 @@ export default function Home() {
         </div>
 
         {/* --- BOTTOM SECTION: INTENT BUTTONS --- */}
-        <div className="w-full max-w-xl flex flex-col items-center animate-in slide-in-from-bottom-4 fade-in duration-700 delay-100">
+        <div className="w-full max-w-xl flex flex-col items-start md:items-center animate-in slide-in-from-bottom-4 fade-in duration-700 delay-100">
           <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight mb-8">
             Let's set up your workspace
           </h2>
@@ -122,7 +122,7 @@ export default function Home() {
             {/* Button 1: Custom Topic Intent */}
             <button 
               onClick={() => handleActionClick("custom")}
-              className="group w-full text-center sm:text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-blue-400 hover:shadow-xl transition-all duration-300 flex flex-col sm:flex-row items-center justify-between gap-4"
+              className="group w-full text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-blue-400 hover:shadow-xl transition-all duration-300 flex items-center justify-between gap-4"
             >
               <div className="flex-1">
                 <h3 className="font-bold text-xl text-gray-900 mb-2 group-hover:text-blue-600 transition-colors">
@@ -132,7 +132,7 @@ export default function Home() {
                   Start structuring chapters based on your approved idea.
                 </p>
               </div>
-              <div className="shrink-0 text-yellow-500 transition-transform transform group-hover:translate-x-1 sm:group-hover:translate-x-2">
+              <div className="shrink-0 text-yellow-500 transition-transform transform group-hover:translate-x-2">
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
                 </svg>
@@ -142,7 +142,7 @@ export default function Home() {
             {/* Button 2: Generate Topic Intent */}
             <button 
               onClick={() => handleActionClick("generate")}
-              className="group w-full text-center sm:text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-orange-400 hover:shadow-xl transition-all duration-300 flex flex-col sm:flex-row items-center justify-between gap-4"
+              className="group w-full text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-orange-400 hover:shadow-xl transition-all duration-300 flex items-center justify-between gap-4"
             >
               <div className="flex-1">
                 <h3 className="font-bold text-xl text-gray-900 mb-2 group-hover:text-orange-600 transition-colors">
@@ -152,7 +152,7 @@ export default function Home() {
                   Let our AI suggest topics aligned with your course.
                 </p>
               </div>
-              <div className="shrink-0 text-yellow-500 transition-transform transform group-hover:translate-x-1 sm:group-hover:translate-x-2">
+              <div className="shrink-0 text-yellow-500 transition-transform transform group-hover:translate-x-2">
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
                 </svg>
@@ -160,10 +160,10 @@ export default function Home() {
             </button>
           </div>
 
-          <div className="mt-10">
+          <div className="mt-10 self-start md:self-center">
             <Link 
               href="/originality" 
-              className="inline-block text-sm font-black text-red-600 underline decoration-orange-500 decoration-[3px] underline-offset-4 hover:text-red-700 transition-colors tracking-widest"
+              className="inline-block text-sm font-black text-red-600 underline decoration-orange-500 decoration-[3px] underline-offset-4 hover:text-red-700 transition-colors tracking-widest uppercase"
             >
               Need to fix similarity first?
             </Link>
