@@ -42,7 +42,7 @@ const defaultStructure: ChapterStructure[] = [
 function WorkspaceContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  
+
   const projectId = searchParams.get("id");
   const intent = searchParams.get("intent"); // "custom" or "generate"
 
@@ -216,7 +216,7 @@ function WorkspaceContent() {
   if (!projectId && intent) {
     return (
       <div className="max-w-3xl mx-auto p-4 sm:p-8 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-        
+
         <div className="mb-8">
           <Link href="/" className="text-sm font-bold text-gray-500 hover:text-black mb-4 inline-block transition-colors">&larr; Back to Home</Link>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">Workspace Setup</h1>
@@ -396,7 +396,8 @@ function WorkspaceContent() {
             <div className="animate-in fade-in duration-300">
               <div className="bg-orange-50 border border-orange-200 p-4 mb-6 rounded-xl">
                 <h3 className="font-bold text-orange-900 text-sm uppercase tracking-wider mb-1">Crucial First Step</h3>
-                <p className="text-orange-800 text-xs">Upload your university's research handbook or typing guidelines here. All subsequent chapters are strictly locked until the AI learns your exact formatting rules.</p>
+                {/* TEXT UPDATED HERE TO REFLECT BROADER DOCUMENT ACCEPTANCE */}
+                <p className="text-orange-800 text-xs">Upload your university's research handbook or typing guidelines here (PDF, Word Document, TXT, or Image). All subsequent chapters are strictly locked until the AI learns your exact formatting rules.</p>
               </div>
               <GuidelineUploader 
                 projectId={projectId as string} 
