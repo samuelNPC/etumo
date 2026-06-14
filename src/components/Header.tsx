@@ -50,9 +50,9 @@ export default function Header() {
     }
   };
 
-  // Scaled up Brand Logo
+  // Reusable Scaled Brand Logo
   const BrandLogo = () => (
-    <Link href="/" className="flex items-center gap-3 relative z-50">
+    <Link href="/" className="flex items-center gap-3" onClick={() => setIsMobileMenuOpen(false)}>
       <img src="/logo.png" alt="Etomu Logo" className="w-10 h-10 object-contain" />
       <span className="text-3xl sm:text-4xl font-black tracking-tighter leading-none lowercase">
         <span className="text-[#4285F4]">e</span>
@@ -66,7 +66,7 @@ export default function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/95 backdrop-blur-sm">
+      <header className="sticky top-0 z-40 w-full border-b border-gray-200 bg-white/95 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto flex h-20 items-center justify-between px-4 sm:px-8">
           
           <BrandLogo />
@@ -104,42 +104,64 @@ export default function Header() {
             )}
           </nav>
 
-          {/* Animated Hamburger Button (No Box) */}
+          {/* Animated Hamburger Button */}
           <button
-            className="md:hidden flex flex-col justify-center items-center w-10 h-10 z-50 group focus:outline-none"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            aria-label="Toggle Menu"
+            className="md:hidden flex flex-col justify-center items-center w-10 h-10 group focus:outline-none"
+            onClick={() => setIsMobileMenuOpen(true)}
+            aria-label="Open Menu"
           >
-            <span className={`block w-6 h-[2px] bg-black rounded-full transition-transform duration-300 ease-in-out origin-center ${isMobileMenuOpen ? "translate-y-[6px] rotate-45" : "-translate-y-1.5"}`}></span>
-            <span className={`block w-6 h-[2px] bg-black rounded-full transition-opacity duration-300 ease-in-out ${isMobileMenuOpen ? "opacity-0" : "opacity-100"}`}></span>
-            <span className={`block w-6 h-[2px] bg-black rounded-full transition-transform duration-300 ease-in-out origin-center ${isMobileMenuOpen ? "-translate-y-[6px] -rotate-45" : "translate-y-1.5"}`}></span>
+            <span className="block w-6 h-[2px] bg-black rounded-full transition-transform duration-300 ease-in-out -translate-y-1.5"></span>
+            <span className="block w-6 h-[2px] bg-black rounded-full transition-opacity duration-300 ease-in-out"></span>
+            <span className="block w-6 h-[2px] bg-black rounded-full transition-transform duration-300 ease-in-out translate-y-1.5"></span>
           </button>
         </div>
       </header>
 
-      {/* Mobile Drawer Menu (Full Screen Dropdown) */}
-      <div className={`fixed inset-0 top-0 pt-20 bg-white z-40 transform transition-transform duration-300 ease-in-out md:hidden flex flex-col ${
-        isMobileMenuOpen ? "translate-y-0" : "-translate-y-full"
+      {/* Mobile Drawer Overlay (Blurred Backdrop) */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden transition-opacity"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Mobile Drawer Menu (Sliding from Left, Leaves space on Right) */}
+      <div className={`fixed inset-y-0 left-0 w-4/5 max-w-sm bg-white z-50 transform transition-transform duration-300 ease-in-out md:hidden flex flex-col shadow-2xl ${
+        isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
       }`}>
         
-        <nav className="flex flex-col px-6 py-8 gap-6 flex-grow overflow-y-auto">
-          {/* Primary Links */}
-          <div className="flex flex-col gap-6 border-b border-gray-100 pb-8">
-            <Link href="/" className="text-xl font-bold text-gray-900">Home</Link>
-            <Link href="/workspace" className="text-xl font-bold text-gray-900">Workspace</Link>
-            <Link href="/originality" className="text-xl font-bold text-gray-900">Originality center</Link>
+        {/* Drawer Header (Own Logo & Close Button) */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-100 h-20">
+          <BrandLogo />
+          <button
+            className="w-10 h-10 flex items-center justify-center rounded-full bg-gray-50 hover:bg-gray-100 transition-colors"
+            onClick={() => setIsMobileMenuOpen(false)}
+            aria-label="Close Menu"
+          >
+            <svg className="w-6 h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <nav className="flex flex-col px-6 py-4 flex-grow overflow-y-auto">
+          {/* Primary Links (Normal Weight, Black, Line Separators) */}
+          <div className="flex flex-col">
+            <Link href="/" className="text-lg font-normal text-black py-4 border-b border-gray-200">Home</Link>
+            <Link href="/workspace" className="text-lg font-normal text-black py-4 border-b border-gray-200">Workspace</Link>
+            <Link href="/originality" className="text-lg font-normal text-black py-4 border-b border-gray-200">Originality center</Link>
           </div>
 
           {/* Secondary Links */}
-          <div className="flex flex-col gap-5 pt-4">
-            <Link href="/about" className="text-lg font-medium text-gray-600 hover:text-black">About</Link>
-            <Link href="/how-to" className="text-lg font-medium text-gray-600 hover:text-black">How to use</Link>
-            <Link href="/privacy" className="text-lg font-medium text-gray-600 hover:text-black">Data we collect</Link>
-            <Link href="/terms" className="text-lg font-medium text-gray-600 hover:text-black">Terms</Link>
+          <div className="flex flex-col gap-5 pt-6">
+            <Link href="/about" className="text-base font-medium text-gray-500 hover:text-black">About</Link>
+            <Link href="/how-to" className="text-base font-medium text-gray-500 hover:text-black">How to use</Link>
+            <Link href="/privacy" className="text-base font-medium text-gray-500 hover:text-black">Data we collect</Link>
+            <Link href="/terms" className="text-base font-medium text-gray-500 hover:text-black">Terms</Link>
           </div>
 
           {/* Auth Section at the Bottom */}
-          <div className="mt-auto pt-8 pb-8">
+          <div className="mt-auto pt-8 pb-4">
             {user ? (
               <div className="flex flex-col gap-3">
                 <p className="text-sm font-medium text-gray-500 mb-2">Signed in as {user.email?.split('@')[0]}</p>
