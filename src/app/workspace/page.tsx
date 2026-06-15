@@ -44,7 +44,6 @@ function WorkspaceContent() {
   const router = useRouter();
 
   const projectId = searchParams.get("id");
-  const intent = searchParams.get("intent"); // "custom" or "generate"
 
   // --- WORKSPACE STATES ---
   const [project, setProject] = useState<ProjectData | null>(null);
@@ -52,11 +51,9 @@ function WorkspaceContent() {
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
 
-  // --- SETUP WIZARD STATES ---
+  // --- SETUP WIZARD STATES (Simplified) ---
   const [course, setCourse] = useState("");
-  const [interest, setInterest] = useState("");
   const [customTopic, setCustomTopic] = useState("");
-  const [generatedTopics, setGeneratedTopics] = useState<string[]>([]);
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
 
@@ -97,7 +94,6 @@ function WorkspaceContent() {
     fetchProject();
   }, [projectId]);
 
-  // SMART UI: Handles the smooth transition after upload without refreshing the whole page
   const handleGuidelinesComplete = async () => {
     if (!projectId) return;
     const docRef = doc(db, "projects", projectId);
@@ -106,7 +102,6 @@ function WorkspaceContent() {
       const updatedProject = docSnap.data() as ProjectData;
       setProject(updatedProject);
 
-      // Auto-slide to the next chapter
       const structure = updatedProject.guidelines?.structure || defaultStructure;
       if (structure.length > 1) {
         setActiveChapter(structure[1].key);
@@ -115,42 +110,18 @@ function WorkspaceContent() {
   };
 
   // ==========================================
-  // WIZARD LOGIC: Topic Generation & Creation
+  // WIZARD LOGIC: Simplified Project Creation
   // ==========================================
-  const handleGenerateTopics = async (e: React.FormEvent) => {
+  const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSetupLoading(true);
-    setSetupError(null);
-    setGeneratedTopics([]);
-
-    try {
-      const response = await fetch("/api/topics", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ course, faculty: "General", interest }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || data.error) {
-        setSetupError(data.error || `Server Error: ${response.status}`);
-      } else if (data.topics) {
-        setGeneratedTopics(data.topics);
-      }
-    } catch (err: any) {
-      setSetupError(err.message || "A critical network error occurred.");
-    } finally {
-      setSetupLoading(false);
-    }
-  };
-
-  const handleCreateProject = async (selectedTopic: string) => {
+    if (!customTopic.trim()) return;
+    
     setSetupLoading(true);
     setSetupError(null);
 
     try {
       const docRef = await addDoc(collection(db, "projects"), {
-        topic: selectedTopic || "Untitled Research",
+        topic: customTopic.trim(),
         course: course || "General",
         faculty: "General",
         progress: 10,
@@ -222,7 +193,6 @@ function WorkspaceContent() {
 
       if (!res.ok) throw new Error("Export failed");
 
-      // Extract the human-readable label and format it for a clean filename
       const currentLabel = currentStructure.find(c => c.key === activeChapter)?.label || activeChapter;
       const cleanFileName = currentLabel.replace(/\s+/g, "_");
 
@@ -243,17 +213,17 @@ function WorkspaceContent() {
   if (loading) return <div className="p-8 font-mono text-sm text-center mt-10">Synchronizing project workspace hooks...</div>;
 
   // ==========================================
-  // RENDER: SETUP WIZARD (No Project ID, but has Intent)
+  // RENDER: SETUP WIZARD (Streamlined)
   // ==========================================
-  if (!projectId && intent) {
+  if (!projectId) {
     return (
       <div className="max-w-3xl mx-auto p-4 sm:p-8 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
         <div className="mb-8">
           <Link href="/" className="text-sm font-bold text-gray-500 hover:text-black mb-4 inline-block transition-colors">&larr; Back to Home</Link>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Workspace Setup</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Get Started</h1>
           <p className="text-gray-500 mt-2">
-            {intent === "custom" ? "Define your approved research topic." : "Let's generate the perfect topic for your course."}
+            Enter your approved research topic below to initialize your workspace.
           </p>
         </div>
 
@@ -263,130 +233,39 @@ function WorkspaceContent() {
           </div>
         )}
 
-        {intent === "custom" && (
-          <form 
-            onSubmit={(e) => { e.preventDefault(); handleCreateProject(customTopic); }} 
-            className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-gray-100 flex flex-col gap-6"
+        <form 
+          onSubmit={handleCreateProject} 
+          className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-gray-100 flex flex-col gap-6"
+        >
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Approved Topic</label>
+            <textarea
+              placeholder="e.g., The Impact of Digital Procurement Systems on Local Government Performance..."
+              rows={3}
+              className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl outline-none focus:border-black focus:ring-1 focus:ring-black transition-all resize-none font-medium"
+              value={customTopic}
+              onChange={(e) => setCustomTopic(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Course (Optional)</label>
+            <input
+              type="text"
+              placeholder="e.g., Bachelor of Business Administration"
+              className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl outline-none focus:border-black focus:ring-1 focus:ring-black transition-all font-medium"
+              value={course}
+              onChange={(e) => setCourse(e.target.value)}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={setupLoading || !customTopic.trim()}
+            className="mt-2 bg-black text-white font-bold py-4 rounded-xl hover:bg-gray-800 transition-colors disabled:bg-gray-300 text-sm uppercase tracking-widest shadow-md flex items-center justify-center gap-2"
           >
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Approved Topic</label>
-              <textarea
-                placeholder="Paste your exact research topic here..."
-                rows={3}
-                className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl outline-none focus:border-black focus:ring-1 focus:ring-black transition-all resize-none font-medium"
-                value={customTopic}
-                onChange={(e) => setCustomTopic(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Course (Optional)</label>
-              <input
-                type="text"
-                placeholder="e.g., Procurement, Computer Science"
-                className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl outline-none focus:border-black focus:ring-1 focus:ring-black transition-all font-medium"
-                value={course}
-                onChange={(e) => setCourse(e.target.value)}
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={setupLoading}
-              className="mt-2 bg-black text-white font-bold py-4 rounded-xl hover:bg-gray-800 transition-colors disabled:bg-gray-300 text-sm uppercase tracking-widest shadow-md flex items-center justify-center gap-2"
-            >
-              {setupLoading ? "Provisioning Database..." : "Initialize Workspace \u2192"}
-            </button>
-          </form>
-        )}
-
-        {intent === "generate" && (
-          <div className="flex flex-col gap-8">
-            <form onSubmit={handleGenerateTopics} className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-gray-100 flex flex-col gap-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Course of Study</label>
-                  <input
-                    type="text"
-                    placeholder="e.g., Business Administration"
-                    className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl outline-none focus:border-[#4285F4] focus:ring-1 focus:ring-[#4285F4] transition-all font-medium"
-                    value={course}
-                    onChange={(e) => setCourse(e.target.value)}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Area of Interest</label>
-                  <input
-                    type="text"
-                    placeholder="e.g., Digital Transformation"
-                    className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl outline-none focus:border-[#4285F4] focus:ring-1 focus:ring-[#4285F4] transition-all font-medium"
-                    value={interest}
-                    onChange={(e) => setInterest(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-              <button
-                type="submit"
-                disabled={setupLoading}
-                className="mt-2 bg-[#4285F4] text-white font-bold py-4 rounded-xl hover:bg-[#3367D6] transition-colors disabled:bg-blue-300 text-sm uppercase tracking-widest shadow-md flex items-center justify-center gap-2"
-              >
-                {setupLoading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Scanning Matrix...
-                  </>
-                ) : (
-                  "Generate Ideas"
-                )}
-              </button>
-            </form>
-
-            {generatedTopics.length > 0 && (
-              <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-gray-100 animate-in slide-in-from-bottom-4">
-                <h3 className="font-bold text-xs uppercase tracking-widest mb-4 text-gray-400">Select an AI-Generated Topic:</h3>
-                <ul className="flex flex-col gap-3">
-                  {generatedTopics.map((topic, index) => (
-                    <li key={index}>
-                      <button 
-                        onClick={() => handleCreateProject(topic)}
-                        disabled={setupLoading}
-                        className="w-full text-left border border-gray-200 p-5 rounded-xl hover:border-[#4285F4] hover:bg-blue-50 transition-all font-semibold text-gray-800 shadow-sm disabled:opacity-50 group flex justify-between items-center"
-                      >
-                        <span className="pr-4 leading-relaxed">{topic}</span>
-                        <span className="opacity-0 group-hover:opacity-100 text-[#4285F4] transition-opacity shrink-0">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ==========================================
-  // RENDER: ERROR FALLBACK (No Project ID, No Intent)
-  // ==========================================
-  if (!projectId) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
-        <div className="border border-gray-300 bg-white p-8 max-w-md w-full shadow-xl rounded-2xl text-center">
-          <div className="w-12 h-12 bg-red-50 border-2 border-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-red-600 font-bold text-xl">!</span>
-          </div>
-          <h2 className="text-xl font-bold mb-2 tracking-tight">Workspace Locked</h2>
-          <p className="text-gray-500 text-sm mb-6">
-            No active project detected. You need to select or create a research topic before accessing the workspace editor.
-          </p>
-          <Link href="/" className="bg-black text-white font-bold py-3 px-6 uppercase text-xs tracking-wider hover:bg-gray-800 transition-colors block w-full rounded-xl">
-            Return to Home
-          </Link>
-        </div>
+            {setupLoading ? "Provisioning Database..." : "Initialize Workspace \u2192"}
+          </button>
+        </form>
       </div>
     );
   }
