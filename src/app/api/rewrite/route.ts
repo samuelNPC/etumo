@@ -58,9 +58,9 @@ export async function POST(req: Request) {
         const result = await model.generateContent(prompt);
         let rewrittenText = result.response.text().trim();
 
-        // Safety Cleanup: Strip out conversational intro phrases and markdown blocks if the AI hallucinates them
-        rewrittenText = rewrittenText.replace(/```(md|markdown|html|text)?/gi, "").replace(/
-```/g, "").trim();
+        // Safety Cleanup: Strip out conversational intro phrases and markdown blocks safely
+        rewrittenText = rewrittenText.replace(/```(md|markdown|html|text)?/gi, "");
+        rewrittenText = rewrittenText.replace(/```/g, "").trim();
         rewrittenText = rewrittenText.replace(/^(Here is|Sure|Certainly|I have|Here's|The rewritten).*?\n/i, "").trim();
 
         return {
