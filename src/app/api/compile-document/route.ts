@@ -1,25 +1,15 @@
 import { NextResponse } from "next/server";
-// 🚨 FIX: Using wildcard import to bypass Next.js Webpack compilation bug with 'docx'
 import * as docx from "docx";
 import { db } from "@/lib/firebase"; 
 import { doc, getDoc } from "firebase/firestore";
 
-const defaultStructure = [
-  { key: "guidelines", label: "1. Faculty Guidelines" },
-  { key: "preliminaryPages", label: "2. Preliminary Pages" },
-  { key: "chapter1", label: "3. Introduction" },
-  { key: "chapter2", label: "4. Literature Review" },
-  { key: "chapter3", label: "5. Methodology" },
-  { key: "chapter4", label: "6. Data Presentation" },
-  { key: "chapter5", label: "7. Conclusion" },
-];
-
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { projectId, chapterKey, isFullDocument } = body;
+    // 🚨 NEW: We dynamically extract the structure array straight from the frontend request
+    const { projectId, chapterKey, isFullDocument, structure } = body;
 
-    if (!projectId || !chapterKey) {
+    if (!projectId || !chapterKey || !structure) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
@@ -32,7 +22,6 @@ export async function POST(req: Request) {
 
     const data = docSnap.data();
     const contentData = data.content || {};
-    const structure = data.guidelines?.isCustomized ? (data.guidelines.structure || defaultStructure) : defaultStructure;
 
     const docChildren: docx.Paragraph[] = [];
 
@@ -76,6 +65,7 @@ export async function POST(req: Request) {
         })
       );
 
+      // 🚨 Iterating purely over the dynamic structure provided by the frontend
       structure.forEach((chapter: any, index: number) => {
         if (chapter.key === "guidelines") return;
 
@@ -103,6 +93,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Chapter content not found" }, { status: 404 });
       }
 
+      // 🚨 Finding the label dynamically from the provided structure
       const chapterLabel = structure.find((c: any) => c.key === chapterKey)?.label || "Chapter";
 
       docChildren.push(
@@ -128,7 +119,6 @@ export async function POST(req: Request) {
       ],
     });
 
-    // 🚨 FIX: Switched to the more stable native Buffer generator
     const buffer = await docx.Packer.toBuffer(document);
 
     return new NextResponse(buffer, {
