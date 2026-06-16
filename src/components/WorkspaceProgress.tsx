@@ -30,30 +30,28 @@ export default function WorkspaceProgress({
   const handleSelect = (key: string, isLocked: boolean) => {
     if (isLocked) return;
     setActiveChapter(key);
-    setIsOpen(false); // Auto-close the overlay when they click a chapter
+    setIsOpen(false); 
   };
 
   const firstUngeneratedIndex = structure.findIndex(c => !generatedChapters.includes(c.key));
 
   return (
-    // 'relative' on mobile so the absolute dropdown anchors to it
     <aside className="w-full md:w-64 flex-shrink-0 flex flex-col md:sticky md:top-4 z-40 self-start relative">
 
-      {/* MOBILE: Sticky Hamburger Toggle */}
-      <div className="md:hidden sticky top-0 z-50 shadow-md">
+      {/* MOBILE: Edge-to-Edge Sticky Toggle */}
+      {/* Added -mx-4 to break out of the parent padding on mobile! */}
+      <div className="md:hidden sticky top-0 z-50 shadow-lg -mx-4 px-4 sm:mx-0 sm:px-0">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex items-center justify-between p-4 font-bold uppercase text-xs tracking-widest border border-gray-300 bg-black text-white transition-colors"
+          className="w-full flex items-center justify-between p-4 font-bold uppercase text-xs tracking-widest bg-black text-white transition-colors border-b border-gray-800"
         >
           <span>{isOpen ? "Close Progress Status" : "Show Progress Status"}</span>
           {isOpen ? (
-            // The "X" Icon
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
           ) : (
-            // The Hamburger / Menu Icon
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="4" y1="12" x2="20" y2="12"></line>
               <line x1="4" y1="6" x2="20" y2="6"></line>
@@ -63,14 +61,14 @@ export default function WorkspaceProgress({
         </button>
       </div>
 
-      {/* THE SIDEBAR CONTENT / MOBILE OVERLAY */}
+      {/* MOBILE OVERLAY */}
+      {/* Also added -mx-4 here so the dropdown matches the edge-to-edge header */}
       <div className={`
-        ${isOpen ? "absolute top-full left-0 right-0 z-50 bg-white shadow-2xl border-x border-b border-gray-300 block animate-in slide-in-from-top-2" : "hidden"} 
-        md:flex md:static md:bg-gray-50 md:shadow-none md:border md:border-gray-300 md:animate-none
+        ${isOpen ? "absolute top-full left-0 right-0 -mx-4 z-50 bg-white shadow-2xl border-b border-gray-300 block animate-in slide-in-from-top-2" : "hidden"} 
+        md:flex md:static md:mx-0 md:bg-gray-50 md:shadow-none md:border md:border-gray-300 md:animate-none
         flex-col p-4 h-fit max-h-[80vh] overflow-y-auto
       `}>
 
-        {/* Progress Bar Header */}
         <div className="mb-6">
           <h2 className="font-bold text-lg tracking-tight">Etumo Engine</h2>
           <div className="mt-2 w-full bg-gray-200 h-2">
@@ -79,7 +77,6 @@ export default function WorkspaceProgress({
           <span className="text-xs text-gray-500 font-medium">Research Completion: {progress}%</span>
         </div>
 
-        {/* Dynamic Project Structure */}
         <nav className="flex-1 flex flex-col gap-1">
           <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Project Structure</span>
 
@@ -122,7 +119,6 @@ export default function WorkspaceProgress({
           })}
         </nav>
 
-        {/* Bottom Action Links */}
         <div className="border-t border-gray-300 pt-4 flex flex-col gap-2 mt-4">
           <Link href="/originality" className="w-full border border-gray-400 p-3 text-xs font-bold text-center hover:bg-gray-100 transition-colors uppercase tracking-widest text-gray-700">
             Originality Center
