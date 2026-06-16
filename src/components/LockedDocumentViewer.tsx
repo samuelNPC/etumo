@@ -36,7 +36,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
         className="absolute inset-0 pointer-events-none opacity-[0.25] flex items-center justify-center text-center z-0"
         style={{ 
           // Replaced text with ETUMO.com, changed font size/weight, and set fill to a bright yellow (%23facc15)
-          backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'350\' height=\'350\'><text x=\'50%\' y=\'50%\' font-family=\'sans-serif\' font-size=\'32\' font-weight=\'900\' fill=\'%23facc15\' text-anchor=\'middle\' transform=\'rotate(-45 175 175)\'>ETUMO.com</text></svg>")',
+          backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'350\' height=\'350\'><text x=\'50%\' y=\'50%\' font-family=\'sans-serif\' font-size=\'32\' font-weight=\'900\' fill=\'%23facc15\' text-anchor=\'middle\' transform=\'rotate(-45 175 175)\'>ETOMU.com</text></svg>")',
           backgroundRepeat: 'repeat'
         }}
       ></div>
