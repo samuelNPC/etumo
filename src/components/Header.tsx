@@ -9,7 +9,7 @@ import { onAuthStateChanged, signOut, User } from "firebase/auth";
 
 export default function Header() {
   const router = useRouter();
-  const pathname = usePathname(); // Allows us to track the current page
+  const pathname = usePathname(); 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -18,11 +18,18 @@ export default function Header() {
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
-  // 1. Hide/Show Header on Scroll
+  // ONLY hide header if we are on the Workspace page
+  const isWorkspace = pathname === "/workspace";
+
   useEffect(() => {
     const handleScroll = () => {
+      // If we are NOT on the workspace page, always keep the header visible.
+      if (!isWorkspace) {
+        setIsVisible(true);
+        return;
+      }
+
       const currentScrollY = window.scrollY;
-      // If we scroll down past 60px, hide the header. If we scroll up, show it.
       if (currentScrollY > lastScrollY && currentScrollY > 60) {
         setIsVisible(false);
       } else {
@@ -33,14 +40,12 @@ export default function Header() {
 
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
-  }, [lastScrollY]);
+  }, [lastScrollY, isWorkspace]);
 
-  // Close mobile menu when route changes
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [pathname]);
 
-  // Lock body scroll when mobile menu is open
   useEffect(() => {
     if (isMobileMenuOpen) {
       document.body.style.overflow = "hidden";
@@ -71,10 +76,8 @@ export default function Header() {
     }
   };
 
-  // Reusable Active Link Helper
   const isActive = (path: string) => pathname === path;
 
-  // Reusable Scaled Brand Logo
   const BrandLogo = () => (
     <Link href="/" className="flex items-center gap-3" onClick={() => setIsMobileMenuOpen(false)}>
       <img src="/logo.png" alt="Etomu Logo" className="w-10 h-10 object-contain" />
@@ -102,18 +105,15 @@ export default function Header() {
 
   return (
     <>
-      {/* SMART HEADER WRAPPER: Transforms out of view when scrolling down */}
       <header className={`sticky top-0 z-40 w-full border-b border-gray-200 bg-white/95 backdrop-blur-sm transition-transform duration-300 ease-in-out ${isVisible ? "translate-y-0" : "-translate-y-full"}`}>
         <div className="max-w-6xl mx-auto flex h-16 items-center justify-between px-4 sm:px-8">
 
           <BrandLogo />
 
-          {/* Desktop Navigation */}
           <nav className="hidden md:flex gap-8 items-center">
             <Link href="/" className={`text-sm transition-colors ${isActive("/") ? "text-black font-bold" : "text-gray-600 font-semibold hover:text-black"}`}>Home</Link>
             <Link href="/dashboard" className={`text-sm transition-colors ${isActive("/dashboard") ? "text-black font-bold" : "text-gray-600 font-semibold hover:text-black"}`}>My Projects</Link>
             
-            {/* DESKTOP DROPDOWN FOR TOOLS */}
             <div className="relative group py-4">
               <button className={`flex items-center gap-1 text-sm transition-colors ${isActive("/originality") || isActive("/data-collector") ? "text-black font-bold" : "text-gray-600 font-semibold hover:text-black"}`}>
                 Research Tools
@@ -157,7 +157,6 @@ export default function Header() {
         </div>
       </header>
 
-      {/* Mobile Drawer Overlay */}
       {isMobileMenuOpen && (
         <div 
           className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden transition-opacity"
@@ -165,7 +164,6 @@ export default function Header() {
         />
       )}
 
-      {/* Mobile Drawer Menu */}
       <div className={`fixed inset-y-0 right-0 w-4/5 max-w-sm bg-white z-50 transform transition-transform duration-300 ease-in-out md:hidden flex flex-col shadow-2xl ${
         isMobileMenuOpen ? "translate-x-0" : "translate-x-full"
       }`}>
@@ -176,7 +174,6 @@ export default function Header() {
         </div>
 
         <nav className="flex flex-col px-6 py-4 flex-grow overflow-y-auto">
-          {/* Primary Links with Active Highlighting */}
           <div className="flex flex-col">
             <Link href="/" className={`text-lg py-4 border-b border-gray-200 transition-colors ${isActive("/") ? "font-bold text-black" : "font-normal text-gray-700"}`}>Home</Link>
             <Link href="/dashboard" className={`text-lg py-4 border-b border-gray-200 transition-colors ${isActive("/dashboard") ? "font-bold text-black" : "font-normal text-gray-700"}`}>My Projects</Link>
