@@ -36,11 +36,10 @@ export default function WorkspaceProgress({
   const firstUngeneratedIndex = structure.findIndex(c => !generatedChapters.includes(c.key));
 
   return (
-    // 🚨 `relative` ensures the absolute dropdown anchors perfectly below the black button
-    <aside className="w-full md:w-64 flex-shrink-0 flex flex-col sticky top-0 md:top-4 z-40 self-start relative">
+    // 🚨 FIX: Removed "relative" so "sticky" can actually do its job!
+    <aside className="w-full md:w-64 flex-shrink-0 flex flex-col sticky top-0 md:top-4 z-40 self-start">
 
       {/* MOBILE: Edge-to-Edge Sticky Toggle */}
-      {/* Natively expands 100% horizontally! */}
       <div className="md:hidden shadow-lg w-full">
         <button
           onClick={() => setIsOpen(!isOpen)}
