@@ -45,19 +45,16 @@ function WorkspaceContent() {
 
   const projectId = searchParams.get("id");
 
-  // --- WORKSPACE STATES ---
   const [project, setProject] = useState<ProjectData | null>(null);
   const [activeChapter, setActiveChapter] = useState<string>("guidelines");
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
 
-  // --- SETUP WIZARD STATES (Streamlined) ---
   const [course, setCourse] = useState("");
   const [customTopic, setCustomTopic] = useState("");
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
 
-  // --- FEEDBACK STATES ---
   const [showFeedbackPanel, setShowFeedbackPanel] = useState<boolean>(false);
   const [feedbackText, setFeedbackText] = useState<string>("");
   const [applyingCorrection, setApplyingCorrection] = useState<boolean>(false);
@@ -76,7 +73,6 @@ function WorkspaceContent() {
           const data = docSnap.data() as ProjectData;
           setProject(data);
 
-          // SMART ROUTING: If they already uploaded guidelines, skip the upload screen and drop them on chapter 1
           if (data.guidelines?.isCustomized && activeChapter === "guidelines") {
             const structure = data.guidelines.structure || defaultStructure;
             if (structure.length > 1) {
@@ -109,9 +105,6 @@ function WorkspaceContent() {
     }
   };
 
-  // ==========================================
-  // WIZARD LOGIC: Simplified Project Creation
-  // ==========================================
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customTopic.trim()) return;
@@ -129,8 +122,6 @@ function WorkspaceContent() {
         userId: auth.currentUser?.uid || "anonymous", 
         createdAt: new Date().toISOString(),
       });
-
-      // Redirect to the newly created workspace
       router.push(`/workspace?id=${docRef.id}`);
     } catch (err) {
       console.error("Error creating project:", err);
@@ -139,10 +130,6 @@ function WorkspaceContent() {
     }
   };
 
-
-  // ==========================================
-  // WORKSPACE LOGIC: Generation & Download
-  // ==========================================
   const handleGenerateChapter = async () => {
     if (!projectId || !activeChapter || activeChapter === "guidelines") return;
     setGenerating(true);
@@ -212,13 +199,9 @@ function WorkspaceContent() {
 
   if (loading) return <div className="p-8 font-mono text-sm text-center mt-10">Synchronizing project workspace hooks...</div>;
 
-  // ==========================================
-  // RENDER: SETUP WIZARD (Streamlined)
-  // ==========================================
   if (!projectId) {
     return (
-      <div className="max-w-3xl mx-auto p-4 sm:p-8 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-
+      <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div className="mb-8">
           <Link href="/" className="text-sm font-bold text-gray-500 hover:text-black mb-4 inline-block transition-colors">&larr; Back to Home</Link>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">Get Started</h1>
@@ -233,10 +216,7 @@ function WorkspaceContent() {
           </div>
         )}
 
-        <form 
-          onSubmit={handleCreateProject} 
-          className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-gray-100 flex flex-col gap-6"
-        >
+        <form onSubmit={handleCreateProject} className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-gray-100 flex flex-col gap-6">
           <div>
             <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Approved Topic</label>
             <textarea
@@ -270,18 +250,17 @@ function WorkspaceContent() {
     );
   }
 
-  // ==========================================
-  // RENDER: MAIN WORKSPACE (Has Project ID)
-  // ==========================================
   if (!project) return <div className="p-8 font-mono text-sm text-center mt-10">Project data corrupted. Please create a new project.</div>;
 
   const activeChapterLabel = currentStructure.find(c => c.key === activeChapter)?.label || activeChapter;
   const isGuidelinesUploaded = project?.guidelines?.isCustomized === true;
 
   return (
-    <div className="max-w-6xl mx-auto p-4 sm:p-8">
-      {/* Header Section */}
-      <div className="border-b border-gray-200 pb-4 mb-6">
+    // 🚨 Notice the wrapper here no longer has global px-4 padding on mobile!
+    <div className="max-w-6xl mx-auto pb-12">
+      
+      {/* Header Section (Padding restored locally here) */}
+      <div className="border-b border-gray-200 pb-4 mb-4 md:mb-6 pt-6 md:pt-8 px-4 md:px-8">
         <span className="text-xs font-mono uppercase text-[#d97706] tracking-wider font-bold">
           {project.course} Workspace
         </span>
@@ -290,7 +269,8 @@ function WorkspaceContent() {
         </h2>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-6 md:gap-8">
+      <div className="flex flex-col md:flex-row md:gap-8 md:px-8">
+        
         {/* Progress Menu Component */}
         <WorkspaceProgress 
           structure={currentStructure}
@@ -298,16 +278,13 @@ function WorkspaceContent() {
           setActiveChapter={setActiveChapter}
           guidelinesUploaded={isGuidelinesUploaded}
           progress={project.progress} 
-          // Extracting the keys of generated content to pass to the sidebar for sequential locking
           generatedChapters={Object.keys(project?.content || {})}
         />
 
-        {/* Dynamic Content Area */}
-        <div className="flex-1 w-full max-w-full overflow-hidden">
+        {/* Dynamic Content Area (Padding restored locally here) */}
+        <div className="flex-1 w-full max-w-full overflow-hidden px-4 md:px-0 mt-6 md:mt-0">
           {activeChapter === "guidelines" ? (
             <div className="animate-in fade-in duration-300">
-
-              {/* SMART UI: Show success state instead of uploader if already configured */}
               {isGuidelinesUploaded ? (
                 <div className="bg-green-50 border border-green-200 p-8 rounded-xl text-center shadow-sm">
                   <div className="w-16 h-16 bg-green-100 text-[#34A853] rounded-full flex items-center justify-center mx-auto mb-4">
@@ -326,15 +303,11 @@ function WorkspaceContent() {
                 <>
                   <div className="bg-orange-50 border border-orange-200 p-4 mb-6 rounded-xl">
                     <h3 className="font-bold text-orange-900 text-sm uppercase tracking-wider mb-1">Crucial First Step</h3>
-                    <p className="text-orange-800 text-xs">Upload your university's research handbook or typing guidelines here (PDF, TXT, or Image). All subsequent chapters are strictly locked until the AI learns your exact formatting rules.</p>
+                    <p className="text-orange-800 text-xs">Upload your university's research handbook or typing guidelines here. All subsequent chapters are strictly locked until the AI learns your exact formatting rules.</p>
                   </div>
-                  <GuidelineUploader 
-                    projectId={projectId as string} 
-                    onComplete={handleGuidelinesComplete} 
-                  />
+                  <GuidelineUploader projectId={projectId as string} onComplete={handleGuidelinesComplete} />
                 </>
               )}
-
             </div>
           ) : (
             <div className="flex flex-col gap-4 animate-in fade-in duration-300">
@@ -370,7 +343,6 @@ function WorkspaceContent() {
 
               <LockedDocumentViewer content={project.content ? project.content[activeChapter] : ""} />
 
-              {/* SUPERVISOR FEEDBACK PANEL */}
               {project.content && project.content[activeChapter] && (
                 <div className="border border-gray-200 rounded-xl bg-white p-4 sm:p-6 shadow-sm mt-2">
                   {!showFeedbackPanel ? (
@@ -385,22 +357,15 @@ function WorkspaceContent() {
                       <h4 className="font-bold text-sm text-gray-800 uppercase tracking-wider">Submit Supervisor Feedback</h4>
                       <textarea
                         className="w-full border border-gray-200 p-4 bg-gray-50 outline-none text-sm rounded-xl focus:border-black resize-y min-h-[100px]"
-                        placeholder="Type supervisor's comments here... (e.g., 'Expand on the background of the study')"
+                        placeholder="Type supervisor's comments here..."
                         value={feedbackText}
                         onChange={(e) => setFeedbackText(e.target.value)}
                       />
                       <div className="flex flex-col sm:flex-row gap-3 mt-2">
-                        <button
-                          onClick={() => {}}
-                          disabled={applyingCorrection || !feedbackText}
-                          className="flex-1 bg-black text-white px-4 py-3 text-xs font-bold uppercase tracking-widest hover:bg-gray-800 disabled:bg-gray-400 transition-colors rounded-lg shadow-sm"
-                        >
+                        <button disabled={applyingCorrection || !feedbackText} className="flex-1 bg-black text-white px-4 py-3 text-xs font-bold uppercase tracking-widest hover:bg-gray-800 disabled:bg-gray-400 transition-colors rounded-lg shadow-sm">
                           {applyingCorrection ? "Rewriting..." : "Apply Corrections"}
                         </button>
-                        <button
-                          onClick={() => setShowFeedbackPanel(false)}
-                          className="w-full sm:w-auto bg-red-50 text-red-600 border border-red-200 px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-red-100 transition-colors rounded-lg shadow-sm"
-                        >
+                        <button onClick={() => setShowFeedbackPanel(false)} className="w-full sm:w-auto bg-red-50 text-red-600 border border-red-200 px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-red-100 transition-colors rounded-lg shadow-sm">
                           Cancel
                         </button>
                       </div>
