@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from "docx";
+// 🚨 FIX: Using wildcard import to bypass Next.js Webpack compilation bug with 'docx'
+import * as docx from "docx";
 import { db } from "@/lib/firebase"; 
 import { doc, getDoc } from "firebase/firestore";
 
@@ -22,7 +23,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // 1. Fetch the project data from Firestore
     const docRef = doc(db, "projects", projectId);
     const docSnap = await getDoc(docRef);
 
@@ -34,31 +34,31 @@ export async function POST(req: Request) {
     const contentData = data.content || {};
     const structure = data.guidelines?.isCustomized ? (data.guidelines.structure || defaultStructure) : defaultStructure;
 
-    const docChildren: Paragraph[] = [];
+    const docChildren: docx.Paragraph[] = [];
 
     const processTextToParagraphs = (text: string) => {
       const lines = text.split("\n");
-      const paragraphs: Paragraph[] = [];
+      const paragraphs: docx.Paragraph[] = [];
 
       lines.forEach((line) => {
         if (line.trim() === "") {
-          paragraphs.push(new Paragraph({ text: "", spacing: { after: 200 } }));
+          paragraphs.push(new docx.Paragraph({ text: "", spacing: { after: 200 } }));
         } else if (line.startsWith("#")) {
           const level = line.match(/^#+/)?.[0].length || 1;
           const cleanText = line.replace(/^#+\s/, "");
           paragraphs.push(
-            new Paragraph({
+            new docx.Paragraph({
               text: cleanText,
-              heading: level === 1 ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3,
+              heading: level === 1 ? docx.HeadingLevel.HEADING_2 : docx.HeadingLevel.HEADING_3,
               spacing: { before: 400, after: 200 },
             })
           );
         } else {
           paragraphs.push(
-            new Paragraph({
-              children: [new TextRun({ text: line, size: 24, font: "Times New Roman" })],
+            new docx.Paragraph({
+              children: [new docx.TextRun({ text: line, size: 24, font: "Times New Roman" })],
               spacing: { after: 200, line: 360 }, 
-              alignment: AlignmentType.JUSTIFIED,
+              alignment: docx.AlignmentType.JUSTIFIED,
             })
           );
         }
@@ -69,9 +69,9 @@ export async function POST(req: Request) {
 
     if (isFullDocument) {
       docChildren.push(
-        new Paragraph({
-          children: [new TextRun({ text: data.topic?.toUpperCase() || "RESEARCH PROJECT", bold: true, size: 32, font: "Times New Roman" })],
-          alignment: AlignmentType.CENTER,
+        new docx.Paragraph({
+          children: [new docx.TextRun({ text: data.topic?.toUpperCase() || "RESEARCH PROJECT", bold: true, size: 32, font: "Times New Roman" })],
+          alignment: docx.AlignmentType.CENTER,
           spacing: { after: 800 },
         })
       );
@@ -83,9 +83,9 @@ export async function POST(req: Request) {
         
         if (chapterText) {
           docChildren.push(
-            new Paragraph({
-              children: [new TextRun({ text: chapter.label.toUpperCase(), bold: true, size: 28, font: "Times New Roman" })],
-              heading: HeadingLevel.HEADING_1,
+            new docx.Paragraph({
+              children: [new docx.TextRun({ text: chapter.label.toUpperCase(), bold: true, size: 28, font: "Times New Roman" })],
+              heading: docx.HeadingLevel.HEADING_1,
               spacing: { before: 400, after: 400 },
               pageBreakBefore: index > 1, 
             })
@@ -106,9 +106,9 @@ export async function POST(req: Request) {
       const chapterLabel = structure.find((c: any) => c.key === chapterKey)?.label || "Chapter";
 
       docChildren.push(
-        new Paragraph({
-          children: [new TextRun({ text: chapterLabel.toUpperCase(), bold: true, size: 28, font: "Times New Roman" })],
-          alignment: AlignmentType.CENTER,
+        new docx.Paragraph({
+          children: [new docx.TextRun({ text: chapterLabel.toUpperCase(), bold: true, size: 28, font: "Times New Roman" })],
+          alignment: docx.AlignmentType.CENTER,
           spacing: { after: 600 },
         })
       );
@@ -117,7 +117,7 @@ export async function POST(req: Request) {
       docChildren.push(...paragraphs);
     }
 
-    const doc = new Document({
+    const document = new docx.Document({
       creator: "Etumo Engine",
       title: data.topic || "Research Document",
       sections: [
@@ -128,8 +128,8 @@ export async function POST(req: Request) {
       ],
     });
 
-    const b64string = await Packer.toBase64String(doc);
-    const buffer = Buffer.from(b64string, "base64");
+    // 🚨 FIX: Switched to the more stable native Buffer generator
+    const buffer = await docx.Packer.toBuffer(document);
 
     return new NextResponse(buffer, {
       status: 200,
