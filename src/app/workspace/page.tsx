@@ -59,7 +59,7 @@ function WorkspaceContent() {
   const [feedbackText, setFeedbackText] = useState<string>("");
   const [applyingCorrection, setApplyingCorrection] = useState<boolean>(false);
 
-  // 🚨 SMART ROUTING: Auto-selects the "Next Step" on load
+  // SMART ROUTING: Auto-selects the "Next Step" on load
   useEffect(() => {
     if (!projectId) {
       setLoading(false);
@@ -112,7 +112,7 @@ function WorkspaceContent() {
 
       const structure = updatedProject.guidelines?.structure || defaultStructure;
       if (structure.length > 1) {
-        setActiveChapter(structure[1].key); // Moves to step 2 automatically
+        setActiveChapter(structure[1].key);
       }
     }
   };
@@ -169,7 +169,7 @@ function WorkspaceContent() {
           };
         });
 
-        // 🚨 AUTO-ADVANCE: Once generation finishes, highlight the next step automatically!
+        // AUTO-ADVANCE: Once generation finishes, highlight the next step automatically!
         const currentIndex = currentStructure.findIndex(c => c.key === activeChapter);
         if (currentIndex !== -1 && currentIndex < currentStructure.length - 1) {
            setActiveChapter(currentStructure[currentIndex + 1].key);
@@ -213,6 +213,38 @@ function WorkspaceContent() {
       a.remove();
     } catch (error) {
       alert("Error downloading document.");
+    }
+  };
+
+  // FULL DOCUMENT EXPORT
+  const handleDownloadFullDocument = async () => {
+    if (!projectId) return;
+    
+    // Premium upsell for the final compiled document
+    const isPaid = window.confirm(`Unlock your fully compiled Research Project for UGX 50,000 via Mobile Money?`);
+    if (!isPaid) return;
+
+    try {
+      // We pass "full" as the chapter key so your backend API knows to combine everything
+      const res = await fetch("/api/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, chapterKey: "full", isFullDocument: true }),
+      });
+
+      if (!res.ok) throw new Error("Full export failed");
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${project?.topic.substring(0, 30).replace(/\s+/g, "_")}_Complete_Research.docx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (error) {
+      alert("Error compiling full document.");
     }
   };
 
@@ -276,8 +308,6 @@ function WorkspaceContent() {
 
   return (
     <div className="max-w-6xl mx-auto pb-12 w-full">
-      
-      {/* Header Section */}
       <div className="border-b border-gray-200 pb-4 mb-4 md:mb-6 pt-6 md:pt-8 px-4 md:px-8">
         <span className="text-xs font-mono uppercase text-[#d97706] tracking-wider font-bold">
           {project.course} Workspace
@@ -288,8 +318,6 @@ function WorkspaceContent() {
       </div>
 
       <div className="flex flex-col md:flex-row md:gap-8 md:px-8">
-        
-        {/* Progress Menu Component */}
         <WorkspaceProgress 
           structure={currentStructure}
           activeChapter={activeChapter}
@@ -297,9 +325,9 @@ function WorkspaceContent() {
           guidelinesUploaded={isGuidelinesUploaded}
           progress={project.progress} 
           generatedChapters={Object.keys(project?.content || {})}
+          onDownloadFull={handleDownloadFullDocument} 
         />
 
-        {/* Dynamic Content Area */}
         <div className="flex-1 w-full max-w-full overflow-hidden px-4 md:px-0 mt-6 md:mt-0">
           {activeChapter === "guidelines" ? (
             <div className="animate-in fade-in duration-300">
