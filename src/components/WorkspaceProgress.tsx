@@ -15,6 +15,8 @@ interface WorkspaceProgressProps {
   guidelinesUploaded: boolean;
   progress: number;
   generatedChapters: string[];
+  // 🚨 NEW: Added the prop for full document download
+  onDownloadFull: () => void; 
 }
 
 export default function WorkspaceProgress({
@@ -24,9 +26,11 @@ export default function WorkspaceProgress({
   guidelinesUploaded,
   progress,
   generatedChapters,
+  onDownloadFull,
 }: WorkspaceProgressProps) {
   const [isOpen, setIsOpen] = useState(false);
 
+  // Helper function to change drawer state and broadcast it globally
   const toggleDrawer = (nextState: boolean) => {
     setIsOpen(nextState);
     window.dispatchEvent(
@@ -45,7 +49,9 @@ export default function WorkspaceProgress({
   return (
     <aside className="w-full md:w-64 flex-shrink-0 flex flex-col sticky top-0 md:top-4 z-40 self-start">
 
+      {/* Placeholder to hold the space when the black bar becomes fixed */}
       <div className="md:hidden w-full h-14">
+        {/* The Black Anchor Bar - Snaps to top-0 and z-[60] so it ALWAYS sits above the drawer */}
         <div className={`w-full h-14 bg-black border-b border-gray-800 transition-none ${
           isOpen ? "fixed top-0 left-0 right-0 z-[60]" : "relative z-50"
         }`}>
@@ -70,7 +76,7 @@ export default function WorkspaceProgress({
         </div>
       </div>
 
-      {/* MOBILE BACKDROP OVERLAY */}
+      {/* MOBILE BACKDROP OVERLAY (Glass blur on the left gap) */}
       <div 
         className={`md:hidden fixed inset-0 top-14 z-40 bg-black/40 backdrop-blur-sm transition-all duration-300 ${
           isOpen ? "opacity-100 visible" : "opacity-0 invisible"
@@ -78,12 +84,13 @@ export default function WorkspaceProgress({
         onClick={() => toggleDrawer(false)}
       />
 
-      {/* 🚨 DRAWER MENU: Now slides from the RIGHT (translate-x-full) to the left! */}
+      {/* DRAWER MENU: Slides from the RIGHT (translate-x-full) to the left */}
       <div className={`
         md:hidden fixed inset-y-0 right-0 top-14 w-[85%] max-w-sm z-50 bg-white shadow-2xl transform transition-transform duration-300 flex flex-col
         ${isOpen ? "translate-x-0" : "translate-x-full"}
         md:flex md:static md:w-full md:max-w-none md:transform-none md:transition-none md:bg-gray-50 md:shadow-none md:border md:border-gray-300 md:h-fit md:max-h-[80vh]
       `}>
+        {/* Full height scroll container */}
         <div className="flex-1 flex flex-col h-full overflow-y-auto p-4">
           
           <div className="mb-6 shrink-0">
@@ -114,7 +121,7 @@ export default function WorkspaceProgress({
                   key={chapter.key}
                   onClick={() => handleSelect(chapter.key, isLocked)}
                   disabled={isLocked}
-                  // 🚨 CHANGED: Active state is now a sleek Gray instead of Black
+                  // 🚨 CHANGED: Active state is now Gray
                   className={`text-left p-3 border text-sm flex items-center justify-between group transition-all ${
                     isActive 
                       ? "bg-gray-200 border-gray-400 font-bold text-gray-900 shadow-sm" 
@@ -137,7 +144,18 @@ export default function WorkspaceProgress({
             })}
           </nav>
 
-          <div className="border-t border-gray-300 pt-4 flex flex-col gap-2 mt-4 shrink-0">
+          <div className="border-t border-gray-300 pt-4 mt-4 shrink-0 flex flex-col gap-2">
+            
+            {/* 🚨 THE MASTER EXPORT BUTTON */}
+            <button 
+              onClick={onDownloadFull}
+              disabled={progress < 40} 
+              className="w-full bg-green-600 text-white p-3 text-xs font-bold text-center hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors uppercase tracking-widest shadow-md mb-2 flex flex-col items-center gap-1 rounded-sm"
+            >
+              <span>Compile Full Project</span>
+              {progress < 40 && <span className="text-[9px] font-medium opacity-70">Requires more content</span>}
+            </button>
+
             <Link href="/originality" className="w-full border border-gray-400 p-3 text-xs font-bold text-center hover:bg-gray-100 transition-colors uppercase tracking-widest text-gray-700">
               Originality Center
             </Link>
