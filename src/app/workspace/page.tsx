@@ -194,7 +194,12 @@ function WorkspaceContent() {
       const res = await fetch("/api/compile-document", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, chapterKey: activeChapter }),
+        // 🚨 ADDED structure: currentStructure to send dynamic blueprint
+        body: JSON.stringify({ 
+          projectId, 
+          chapterKey: activeChapter,
+          structure: currentStructure 
+        }),
       });
 
       if (!res.ok) throw new Error("Export failed");
@@ -225,11 +230,16 @@ function WorkspaceContent() {
     if (!isPaid) return;
 
     try {
-      // We pass "full" as the chapter key so your backend API knows to combine everything
       const res = await fetch("/api/compile-document", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, chapterKey: "full", isFullDocument: true }),
+        // 🚨 ADDED structure: currentStructure to send dynamic blueprint
+        body: JSON.stringify({ 
+          projectId, 
+          chapterKey: "full", 
+          isFullDocument: true,
+          structure: currentStructure 
+        }),
       });
 
       if (!res.ok) throw new Error("Full export failed");
