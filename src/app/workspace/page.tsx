@@ -82,7 +82,7 @@ function WorkspaceContent() {
           } else {
             // Find the first chapter that has NOT been generated yet (excluding guidelines)
             let nextIndex = structure.findIndex(c => c.key !== "guidelines" && !generatedKeys.includes(c.key));
-            
+
             if (nextIndex === -1) {
               // Everything is generated! Highlight the final item on the list.
               setActiveChapter(structure[structure.length - 1].key);
@@ -120,7 +120,7 @@ function WorkspaceContent() {
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customTopic.trim()) return;
-    
+
     setSetupLoading(true);
     setSetupError(null);
 
@@ -194,7 +194,6 @@ function WorkspaceContent() {
       const res = await fetch("/api/compile-document", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // 🚨 ADDED structure: currentStructure to send dynamic blueprint
         body: JSON.stringify({ 
           projectId, 
           chapterKey: activeChapter,
@@ -224,7 +223,7 @@ function WorkspaceContent() {
   // FULL DOCUMENT EXPORT
   const handleDownloadFullDocument = async () => {
     if (!projectId) return;
-    
+
     // Premium upsell for the final compiled document
     const isPaid = window.confirm(`Unlock your fully compiled Research Project for UGX 50,000 via Mobile Money?`);
     if (!isPaid) return;
@@ -233,7 +232,6 @@ function WorkspaceContent() {
       const res = await fetch("/api/compile-document", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // 🚨 ADDED structure: currentStructure to send dynamic blueprint
         body: JSON.stringify({ 
           projectId, 
           chapterKey: "full", 
@@ -328,15 +326,18 @@ function WorkspaceContent() {
       </div>
 
       <div className="flex flex-col md:flex-row md:gap-8 md:px-8">
-        <WorkspaceProgress 
-          structure={currentStructure}
-          activeChapter={activeChapter}
-          setActiveChapter={setActiveChapter}
-          guidelinesUploaded={isGuidelinesUploaded}
-          progress={project.progress} 
-          generatedChapters={Object.keys(project?.content || {})}
-          onDownloadFull={handleDownloadFullDocument}
-        />
+        {/* Sidebar protected by rigid width constraint */}
+        <div className="w-full md:w-[280px] shrink-0">
+          <WorkspaceProgress 
+            structure={currentStructure}
+            activeChapter={activeChapter}
+            setActiveChapter={setActiveChapter}
+            guidelinesUploaded={isGuidelinesUploaded}
+            progress={project.progress} 
+            generatedChapters={Object.keys(project?.content || {})}
+            onDownloadFull={handleDownloadFullDocument}
+          />
+        </div>
 
         <div className="flex-1 w-full max-w-full overflow-hidden px-4 md:px-0 mt-6 md:mt-0">
           {activeChapter === "guidelines" ? (
