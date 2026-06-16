@@ -3,67 +3,108 @@
 import { useState } from "react";
 import Link from "next/link";
 
+interface AnalysisData {
+  questionCount: number;
+  sectionCount: number;
+  instrumentId: string;
+}
+
 export default function DataCollectorPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  // Flow states: upload -> analyzing -> checkout -> success
   const [step, setStep] = useState<"upload" | "analyzing" | "checkout" | "success">("upload");
   const [copyFeedback, setCopyFeedback] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  // Holds the dynamic data returned by the AI backend
+  const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!selectedFile) return;
     setStep("analyzing");
-    
-    // Simulate the AI reading the document and extracting questions
-    setTimeout(() => {
+    setErrorMessage(null);
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    try {
+      // Send to the real backend
+      const res = await fetch("/api/parse-instrument", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to analyze document.");
+      }
+
+      // Save the AI's findings and the unique database ID
+      setAnalysisData({
+        questionCount: data.questionCount,
+        sectionCount: data.sectionCount,
+        instrumentId: data.instrumentId
+      });
+      
       setStep("checkout");
-    }, 2500);
+    } catch (error: any) {
+      setErrorMessage(error.message);
+      setStep("upload");
+    }
   };
 
   const handlePayment = () => {
-    // This is where you will integrate MTN MoMo / Airtel Money
-    alert("Redirecting to Mobile Money gateway for 10,000 UGX...");
+    // FAKE PAYMENT LOGIC FOR MASSIVE TESTING
+    // In production, this will trigger the MTN/Airtel API
+    alert("DEVELOPER MODE: Simulating a successful 10,000 UGX Mobile Money payment...");
     
-    // Simulate a successful payment redirect
-    setTimeout(() => {
-      setStep("success");
-    }, 1000);
+    // Immediately move to success
+    setStep("success");
   };
 
+  const finalLink = `etumo.ug/collect/${analysisData?.instrumentId?.substring(0, 8) || "demo-link"}`;
+
   const handleCopyLink = () => {
-    navigator.clipboard.writeText("https://etumo.ug/collect/kbu-89a2f");
+    navigator.clipboard.writeText(`https://${finalLink}`);
     setCopyFeedback(true);
     setTimeout(() => setCopyFeedback(false), 3000);
   };
 
   return (
     <div className="min-h-[85vh] flex flex-col items-center justify-center p-4 sm:p-8 bg-blue-50 overflow-hidden relative">
+
       
-      {/* Background aesthetics */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden flex justify-center items-center">
         <div className="absolute top-0 right-1/4 w-[300px] h-[300px] bg-orange-300/20 rounded-full mix-blend-multiply filter blur-[80px]" />
         <div className="absolute bottom-0 left-1/4 w-[300px] h-[300px] bg-blue-300/30 rounded-full mix-blend-multiply filter blur-[80px]" />
       </div>
 
       <div className="w-full max-w-2xl bg-white/90 backdrop-blur-xl border border-white shadow-2xl p-8 sm:p-12 relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-500 rounded-2xl">
+
         
-        {/* Header */}
         <div className="mb-8">
           <Link href="/workspace" className="text-xs font-bold text-gray-400 hover:text-black mb-4 inline-block uppercase tracking-widest transition-colors">&larr; Back to Workspace</Link>
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900 leading-tight">
             Research Instrument <br /> Digitization
           </h1>
           <p className="text-gray-500 mt-3 text-sm sm:text-base leading-relaxed">
-            Stop printing paper questionnaires. Upload your approved Word document, and the Etumo Engine will convert it into a digital collection link for 10,000 UGX.
+            Stop printing paper questionnaires. Upload your approved document, and the Etumo Engine will convert it into a digital collection link for 10,000 UGX.
           </p>
         </div>
 
-        {/* STEP 1 & 2: UPLOAD & ANALYZE */}
+        {errorMessage && (
+          <div className="mb-6 border-l-4 border-red-500 bg-red-50 p-4 text-red-700 text-sm font-bold shadow-sm rounded-r-lg">
+            ⚠️ {errorMessage}
+          </div>
+        )}
+
+        
         {(step === "upload" || step === "analyzing") && (
           <div className="space-y-6">
             <div className={`border-2 border-dashed ${selectedFile ? 'border-orange-500 bg-orange-50' : 'border-gray-300 bg-gray-50'} p-10 text-center transition-all duration-300 relative group rounded-xl`}>
               <input 
                 type="file" 
-                accept=".docx,.pdf"
+                accept=".pdf"
                 onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
                 disabled={step === "analyzing"}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed" 
@@ -81,8 +122,8 @@ export default function DataCollectorPage() {
               ) : (
                 <div className="flex flex-col items-center gap-2 text-gray-500 group-hover:text-black transition-colors">
                   <svg className="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                  <span className="font-bold text-sm uppercase tracking-widest">Select Instrument (.docx or .pdf)</span>
-                  <span className="text-xs">Click or drag and drop</span>
+                  <span className="font-bold text-sm uppercase tracking-widest">Select Instrument (.pdf)</span>
+                  <span className="text-xs">Click or drag and drop (Save Word Docs as PDF first)</span>
                 </div>
               )}
             </div>
@@ -92,27 +133,27 @@ export default function DataCollectorPage() {
               disabled={!selectedFile || step === "analyzing"}
               className="w-full bg-black text-white font-bold py-4 rounded-xl uppercase text-sm tracking-widest hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all shadow-md"
             >
-              {step === "analyzing" ? "Processing..." : "Analyze Document"}
+              {step === "analyzing" ? "Processing via Etumo Engine..." : "Analyze Document"}
             </button>
           </div>
         )}
 
-        {/* STEP 3: CHECKOUT UPSALE */}
-        {step === "checkout" && (
+        
+        {step === "checkout" && analysisData && (
           <div className="space-y-6 animate-in slide-in-from-bottom-4 fade-in duration-500">
             <div className="bg-green-50 border border-green-200 p-6 rounded-xl">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-8 h-8 bg-green-200 text-green-700 rounded-full flex items-center justify-center font-bold">✓</div>
                 <h3 className="font-bold text-green-900 uppercase tracking-widest text-sm">Instrument Mapped</h3>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-green-100 shadow-sm text-center">
-                  <span className="block text-3xl font-black text-gray-900 mb-1">14</span>
+                  <span className="block text-3xl font-black text-gray-900 mb-1">{analysisData.questionCount}</span>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Questions Found</span>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-green-100 shadow-sm text-center">
-                  <span className="block text-3xl font-black text-gray-900 mb-1">3</span>
+                  <span className="block text-3xl font-black text-gray-900 mb-1">{analysisData.sectionCount}</span>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Data Sections</span>
                 </div>
               </div>
@@ -130,22 +171,23 @@ export default function DataCollectorPage() {
             >
               Generate Link (10,000 UGX)
             </button>
+            <p className="text-center text-xs text-gray-400 font-medium">Payment is currently in Developer Test Mode (Free)</p>
           </div>
         )}
 
-        {/* STEP 4: SUCCESS & LINK GENERATION */}
+        
         {step === "success" && (
           <div className="space-y-6 animate-in zoom-in-95 fade-in duration-500 text-center">
             <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
               <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
             </div>
-            
+
             <h2 className="text-2xl font-bold text-gray-900 tracking-tight">System Online</h2>
             <p className="text-gray-500 text-sm mb-8">Your digital instrument is live and ready to collect responses.</p>
 
             <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl flex items-center justify-between gap-4">
               <span className="text-sm font-mono font-bold text-gray-800 truncate px-2">
-                etumo.ug/collect/kbu-89a2f
+                {finalLink}
               </span>
               <button 
                 onClick={handleCopyLink}
@@ -161,7 +203,7 @@ export default function DataCollectorPage() {
           </div>
         )}
 
-        {/* Info Footer */}
+        
         <div className="mt-8 pt-8 border-t border-gray-100 flex gap-4 items-start">
           <div className="shrink-0 w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
