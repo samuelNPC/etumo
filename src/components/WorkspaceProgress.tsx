@@ -36,14 +36,13 @@ export default function WorkspaceProgress({
   const firstUngeneratedIndex = structure.findIndex(c => !generatedChapters.includes(c.key));
 
   return (
-    // 🚨 FIX: Removed "relative" so "sticky" can actually do its job!
-    <aside className="w-full md:w-64 flex-shrink-0 flex flex-col sticky top-0 md:top-4 z-40 self-start">
+    <aside className="w-full md:w-64 flex-shrink-0 flex flex-col sticky top-0 md:top-4 z-50 self-start">
 
-      {/* MOBILE: Edge-to-Edge Sticky Toggle */}
-      <div className="md:hidden shadow-lg w-full">
+      {/* MOBILE: Fixed Height Anchor Header (Always Stays on Top) */}
+      <div className="md:hidden w-full h-14 bg-black border-b border-gray-800 z-50 relative">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex items-center justify-between p-4 font-bold uppercase text-xs tracking-widest bg-black text-white transition-colors border-b border-gray-800"
+          className="w-full h-full flex items-center justify-between px-4 font-bold uppercase text-xs tracking-widest text-white transition-colors"
         >
           <span>{isOpen ? "Close Progress Status" : "Show Progress Status"}</span>
           {isOpen ? (
@@ -61,71 +60,83 @@ export default function WorkspaceProgress({
         </button>
       </div>
 
-      {/* OVERLAY MENU */}
+      {/* MOBILE BACKDROP OVERLAY (Blurs the 15% gap on the right) */}
+      {/* top-14 ensures it tucks perfectly underneath the 56px black header */}
+      <div 
+        className={`md:hidden fixed inset-0 top-14 z-40 bg-black/40 backdrop-blur-sm transition-all duration-300 ${
+          isOpen ? "opacity-100 visible" : "opacity-0 invisible"
+        }`}
+        onClick={() => setIsOpen(false)}
+      />
+
+      {/* DRAWER MENU (Slides from left on Mobile, Static on Desktop) */}
       <div className={`
-        ${isOpen ? "absolute top-full left-0 w-full z-50 bg-white shadow-2xl border-b border-gray-300 block animate-in slide-in-from-top-2" : "hidden"} 
-        md:flex md:static md:w-full md:bg-gray-50 md:shadow-none md:border md:border-gray-300 md:animate-none
-        flex-col p-4 h-fit max-h-[80vh] overflow-y-auto
+        md:hidden fixed inset-y-0 top-14 left-0 w-[85%] max-w-sm z-50 bg-white shadow-2xl transform transition-transform duration-300 flex flex-col overflow-hidden
+        ${isOpen ? "translate-x-0" : "-translate-x-full"}
+        md:flex md:static md:w-full md:max-w-none md:transform-none md:transition-none md:bg-gray-50 md:shadow-none md:border md:border-gray-300 md:h-fit md:max-h-[80vh]
       `}>
 
-        <div className="mb-6">
-          <h2 className="font-bold text-lg tracking-tight">Etumo Engine</h2>
-          <div className="mt-2 w-full bg-gray-200 h-2">
-            <div className="bg-[#d97706] h-2 transition-all duration-500" style={{ width: `${progress}%` }}></div>
+        <div className="p-4 overflow-y-auto flex-1 flex flex-col">
+          <div className="mb-6 shrink-0">
+            <h2 className="font-bold text-lg tracking-tight">Etumo Engine</h2>
+            <div className="mt-2 w-full bg-gray-200 h-2">
+              <div className="bg-[#d97706] h-2 transition-all duration-500" style={{ width: `${progress}%` }}></div>
+            </div>
+            <span className="text-xs text-gray-500 font-medium">Research Completion: {progress}%</span>
           </div>
-          <span className="text-xs text-gray-500 font-medium">Research Completion: {progress}%</span>
+
+          <nav className="flex-1 flex flex-col gap-1 shrink-0">
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Project Structure</span>
+
+            {structure.map((chapter, index) => {
+              const isGenerated = generatedChapters.includes(chapter.key);
+              const isActive = activeChapter === chapter.key;
+              const isFree = chapter.key === "guidelines" || chapter.key === "preliminaryPages";
+              
+              let isLocked = false;
+              if (!guidelinesUploaded && chapter.key !== "guidelines") {
+                isLocked = true;
+              } else if (!isGenerated && index > firstUngeneratedIndex) {
+                isLocked = true;
+              }
+
+              return (
+                <button
+                  key={chapter.key}
+                  onClick={() => handleSelect(chapter.key, isLocked)}
+                  disabled={isLocked}
+                  className={`text-left p-3 border text-sm flex items-center justify-between group transition-all ${
+                    isActive 
+                      ? "bg-black border-black font-bold text-white shadow-sm" 
+                      : isLocked 
+                        ? "border-transparent text-gray-400 cursor-not-allowed opacity-60 bg-gray-100/50" 
+                        : "border-transparent hover:border-gray-300 hover:bg-gray-50 text-gray-700"
+                  }`}
+                >
+                  <span className="truncate pr-2">{chapter.label}</span>
+
+                  {isGenerated && chapter.key !== "guidelines" ? (
+                    <span className={`text-[10px] px-1.5 py-0.5 font-bold tracking-wider rounded-sm shrink-0 ${isActive ? 'bg-gray-800 text-gray-200' : 'bg-green-100 text-green-700'}`}>DONE ✓</span>
+                  ) : isLocked ? (
+                    <span className="text-xs opacity-60 shrink-0">🔒</span>
+                  ) : isFree ? (
+                    <span className={`text-[10px] px-1.5 py-0.5 font-bold tracking-wider rounded-sm shrink-0 ${isActive ? 'bg-gray-800 text-gray-200' : 'bg-blue-100 text-blue-700'}`}>FREE</span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="border-t border-gray-300 pt-4 flex flex-col gap-2 mt-4 shrink-0">
+            <Link href="/originality" className="w-full border border-gray-400 p-3 text-xs font-bold text-center hover:bg-gray-100 transition-colors uppercase tracking-widest text-gray-700">
+              Originality Center
+            </Link>
+            <Link href="/data-collector" className="w-full border border-orange-200 p-3 text-xs font-bold text-center hover:bg-orange-100 transition-colors uppercase tracking-widest text-[#d97706] bg-orange-50">
+              Data Collector &rarr;
+            </Link>
+          </div>
         </div>
 
-        <nav className="flex-1 flex flex-col gap-1">
-          <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Project Structure</span>
-
-          {structure.map((chapter, index) => {
-            const isGenerated = generatedChapters.includes(chapter.key);
-            const isActive = activeChapter === chapter.key;
-            const isFree = chapter.key === "guidelines" || chapter.key === "preliminaryPages";
-            
-            let isLocked = false;
-            if (!guidelinesUploaded && chapter.key !== "guidelines") {
-              isLocked = true;
-            } else if (!isGenerated && index > firstUngeneratedIndex) {
-              isLocked = true;
-            }
-
-            return (
-              <button
-                key={chapter.key}
-                onClick={() => handleSelect(chapter.key, isLocked)}
-                disabled={isLocked}
-                className={`text-left p-3 border text-sm flex items-center justify-between group transition-all ${
-                  isActive 
-                    ? "bg-black border-black font-bold text-white shadow-sm" 
-                    : isLocked 
-                      ? "border-transparent text-gray-400 cursor-not-allowed opacity-60 bg-gray-100/50" 
-                      : "border-transparent hover:border-gray-300 hover:bg-gray-50 text-gray-700"
-                }`}
-              >
-                <span className="truncate pr-2">{chapter.label}</span>
-
-                {isGenerated && chapter.key !== "guidelines" ? (
-                  <span className={`text-[10px] px-1.5 py-0.5 font-bold tracking-wider rounded-sm shrink-0 ${isActive ? 'bg-gray-800 text-gray-200' : 'bg-green-100 text-green-700'}`}>DONE ✓</span>
-                ) : isLocked ? (
-                  <span className="text-xs opacity-60 shrink-0">🔒</span>
-                ) : isFree ? (
-                  <span className={`text-[10px] px-1.5 py-0.5 font-bold tracking-wider rounded-sm shrink-0 ${isActive ? 'bg-gray-800 text-gray-200' : 'bg-blue-100 text-blue-700'}`}>FREE</span>
-                ) : null}
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="border-t border-gray-300 pt-4 flex flex-col gap-2 mt-4">
-          <Link href="/originality" className="w-full border border-gray-400 p-3 text-xs font-bold text-center hover:bg-gray-100 transition-colors uppercase tracking-widest text-gray-700">
-            Originality Center
-          </Link>
-          <Link href="/data-collector" className="w-full border border-orange-200 p-3 text-xs font-bold text-center hover:bg-orange-100 transition-colors uppercase tracking-widest text-[#d97706] bg-orange-50">
-            Data Collector &rarr;
-          </Link>
-        </div>
       </div>
     </aside>
   );
