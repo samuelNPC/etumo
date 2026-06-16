@@ -6,7 +6,6 @@ import { doc, getDoc } from "firebase/firestore";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    // 🚨 NEW: We dynamically extract the structure array straight from the frontend request
     const { projectId, chapterKey, isFullDocument, structure } = body;
 
     if (!projectId || !chapterKey || !structure) {
@@ -25,38 +24,116 @@ export async function POST(req: Request) {
 
     const docChildren: docx.Paragraph[] = [];
 
+    // 🚨 HIGH-QUALITY PARSER: Converts raw AI Markdown into native Microsoft Word formatting
     const processTextToParagraphs = (text: string) => {
       const lines = text.split("\n");
       const paragraphs: docx.Paragraph[] = [];
 
       lines.forEach((line) => {
-        if (line.trim() === "") {
+        const trimmed = line.trim();
+        
+        // 1. Handle Empty Lines
+        if (trimmed === "") {
           paragraphs.push(new docx.Paragraph({ text: "", spacing: { after: 200 } }));
-        } else if (line.startsWith("#")) {
-          const level = line.match(/^#+/)?.[0].length || 1;
-          const cleanText = line.replace(/^#+\s/, "");
+          return;
+        }
+
+        // 2. Handle Markdown Headers (e.g., ### Chapter One)
+        const headerMatch = trimmed.match(/^(#{1,6})\s+(.*)/);
+        if (headerMatch) {
+          const level = headerMatch[1].length;
+          // Strip out any bold stars the AI might have accidentally left inside the header
+          const contentText = headerMatch[2].replace(/\*/g, ""); 
+          
+          let headingLevel;
+          switch(level) {
+              case 1: headingLevel = docx.HeadingLevel.HEADING_1; break;
+              case 2: headingLevel = docx.HeadingLevel.HEADING_2; break;
+              case 3: headingLevel = docx.HeadingLevel.HEADING_3; break;
+              default: headingLevel = docx.HeadingLevel.HEADING_4; break;
+          }
+
           paragraphs.push(
             new docx.Paragraph({
-              text: cleanText,
-              heading: level === 1 ? docx.HeadingLevel.HEADING_2 : docx.HeadingLevel.HEADING_3,
+              text: contentText.toUpperCase(),
+              heading: headingLevel,
               spacing: { before: 400, after: 200 },
             })
           );
-        } else {
+          return;
+        }
+
+        // 3. Handle Markdown Tables (Aligns them using Monospace font)
+        if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
           paragraphs.push(
             new docx.Paragraph({
-              children: [new docx.TextRun({ text: line, size: 24, font: "Times New Roman" })],
-              spacing: { after: 200, line: 360 }, 
-              alignment: docx.AlignmentType.JUSTIFIED,
+              children: [new docx.TextRun({ text: trimmed, font: "Courier New", size: 20 })],
+              spacing: { after: 0, line: 240 },
+              alignment: docx.AlignmentType.LEFT,
             })
           );
+          return;
         }
+
+        // 4. Handle Bullet Points
+        const isBullet = /^[\*\-]\s+(.*)/.exec(trimmed);
+        let contentText = trimmed;
+        let bulletInfo = undefined;
+
+        if (isBullet) {
+           contentText = isBullet[1];
+           bulletInfo = { level: 0 }; // Native Word bullet point
+        }
+
+        // 5. Inline Formatting Parser (Bold & Italics)
+        const runs: docx.TextRun[] = [];
+        let currentIdx = 0;
+        // Regex looks for **bold** or *italic*
+        const regex = /(\*\*.*?\*\*|\*.*?\*)/g;
+        let match;
+
+        while ((match = regex.exec(contentText)) !== null) {
+          // Push normal text before the bold/italic
+          if (match.index > currentIdx) {
+            runs.push(new docx.TextRun({ text: contentText.substring(currentIdx, match.index), size: 24, font: "Times New Roman" }));
+          }
+
+          const matchedText = match[0];
+          if (matchedText.startsWith("**")) {
+            // It is Bold
+            runs.push(new docx.TextRun({ text: matchedText.slice(2, -2), bold: true, size: 24, font: "Times New Roman" }));
+          } else if (matchedText.startsWith("*")) {
+            // It is Italic
+            runs.push(new docx.TextRun({ text: matchedText.slice(1, -1), italics: true, size: 24, font: "Times New Roman" }));
+          }
+          currentIdx = regex.lastIndex;
+        }
+
+        // Push any remaining normal text at the end of the line
+        if (currentIdx < contentText.length) {
+          runs.push(new docx.TextRun({ text: contentText.substring(currentIdx), size: 24, font: "Times New Roman" }));
+        }
+
+        // Configure the final paragraph
+        const paraOptions: any = {
+          children: runs,
+          spacing: { after: 200, line: 360 }, // 1.5 Line Spacing standard
+          alignment: docx.AlignmentType.JUSTIFIED,
+        };
+
+        if (bulletInfo) {
+            paraOptions.bullet = bulletInfo;
+            paraOptions.alignment = docx.AlignmentType.LEFT;
+        }
+
+        paragraphs.push(new docx.Paragraph(paraOptions));
       });
 
       return paragraphs;
     };
 
     if (isFullDocument) {
+      // Add the overarching Master Title for the entire document
       docChildren.push(
         new docx.Paragraph({
           children: [new docx.TextRun({ text: data.topic?.toUpperCase() || "RESEARCH PROJECT", bold: true, size: 32, font: "Times New Roman" })],
@@ -65,22 +142,18 @@ export async function POST(req: Request) {
         })
       );
 
-      // 🚨 Iterating purely over the dynamic structure provided by the frontend
       structure.forEach((chapter: any, index: number) => {
         if (chapter.key === "guidelines") return;
 
         const chapterText = contentData[chapter.key];
         
         if (chapterText) {
-          docChildren.push(
-            new docx.Paragraph({
-              children: [new docx.TextRun({ text: chapter.label.toUpperCase(), bold: true, size: 28, font: "Times New Roman" })],
-              heading: docx.HeadingLevel.HEADING_1,
-              spacing: { before: 400, after: 400 },
-              pageBreakBefore: index > 1, 
-            })
-          );
+          // Add a Page Break before every chapter (except the very first one)
+          if (index > 1) { 
+            docChildren.push(new docx.Paragraph({ text: "", pageBreakBefore: true }));
+          }
 
+          // 🚨 FIX: We removed the injected chapter title here so the AI's title doesn't duplicate!
           const paragraphs = processTextToParagraphs(chapterText);
           docChildren.push(...paragraphs);
         }
@@ -93,17 +166,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Chapter content not found" }, { status: 404 });
       }
 
-      // 🚨 Finding the label dynamically from the provided structure
-      const chapterLabel = structure.find((c: any) => c.key === chapterKey)?.label || "Chapter";
-
-      docChildren.push(
-        new docx.Paragraph({
-          children: [new docx.TextRun({ text: chapterLabel.toUpperCase(), bold: true, size: 28, font: "Times New Roman" })],
-          alignment: docx.AlignmentType.CENTER,
-          spacing: { after: 600 },
-        })
-      );
-
+      // 🚨 FIX: Removed duplicate title generation for single chapters too
       const paragraphs = processTextToParagraphs(singleChapterText);
       docChildren.push(...paragraphs);
     }
