@@ -256,10 +256,9 @@ function WorkspaceContent() {
   const isGuidelinesUploaded = project?.guidelines?.isCustomized === true;
 
   return (
-    // 🚨 Notice the wrapper here no longer has global px-4 padding on mobile!
-    <div className="max-w-6xl mx-auto pb-12">
+    <div className="max-w-6xl mx-auto pb-12 w-full">
       
-      {/* Header Section (Padding restored locally here) */}
+      {/* Header Section */}
       <div className="border-b border-gray-200 pb-4 mb-4 md:mb-6 pt-6 md:pt-8 px-4 md:px-8">
         <span className="text-xs font-mono uppercase text-[#d97706] tracking-wider font-bold">
           {project.course} Workspace
@@ -281,7 +280,7 @@ function WorkspaceContent() {
           generatedChapters={Object.keys(project?.content || {})}
         />
 
-        {/* Dynamic Content Area (Padding restored locally here) */}
+        {/* Dynamic Content Area */}
         <div className="flex-1 w-full max-w-full overflow-hidden px-4 md:px-0 mt-6 md:mt-0">
           {activeChapter === "guidelines" ? (
             <div className="animate-in fade-in duration-300">
