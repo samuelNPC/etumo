@@ -62,7 +62,8 @@ export default function DataCollectorPage() {
     setStep("success");
   };
 
-  const finalLink = `etumo.ug/collect/${analysisData?.instrumentId?.substring(0, 8) || "demo-link"}`;
+  // 🚨 FIX: Changed substring to (0, 4) to make the URL super short!
+  const finalLink = `etumo.ug/collect/${analysisData?.instrumentId?.substring(0, 4) || "demo"}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(`https://${finalLink}`);
@@ -73,7 +74,7 @@ export default function DataCollectorPage() {
   return (
     <div className="min-h-[85vh] flex flex-col items-center justify-center p-4 sm:p-8 bg-blue-50 overflow-hidden relative">
 
-      
+      {/* Background aesthetics */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden flex justify-center items-center">
         <div className="absolute top-0 right-1/4 w-[300px] h-[300px] bg-orange-300/20 rounded-full mix-blend-multiply filter blur-[80px]" />
         <div className="absolute bottom-0 left-1/4 w-[300px] h-[300px] bg-blue-300/30 rounded-full mix-blend-multiply filter blur-[80px]" />
@@ -81,7 +82,7 @@ export default function DataCollectorPage() {
 
       <div className="w-full max-w-2xl bg-white/90 backdrop-blur-xl border border-white shadow-2xl p-8 sm:p-12 relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-500 rounded-2xl">
 
-        
+        {/* Header */}
         <div className="mb-8">
           <Link href="/workspace" className="text-xs font-bold text-gray-400 hover:text-black mb-4 inline-block uppercase tracking-widest transition-colors">&larr; Back to Workspace</Link>
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900 leading-tight">
@@ -98,7 +99,7 @@ export default function DataCollectorPage() {
           </div>
         )}
 
-        
+        {/* STEP 1 & 2: UPLOAD & ANALYZE */}
         {(step === "upload" || step === "analyzing") && (
           <div className="space-y-6">
             <div className={`border-2 border-dashed ${selectedFile ? 'border-orange-500 bg-orange-50' : 'border-gray-300 bg-gray-50'} p-10 text-center transition-all duration-300 relative group rounded-xl`}>
@@ -138,7 +139,7 @@ export default function DataCollectorPage() {
           </div>
         )}
 
-        
+        {/* STEP 3: CHECKOUT UPSALE */}
         {step === "checkout" && analysisData && (
           <div className="space-y-6 animate-in slide-in-from-bottom-4 fade-in duration-500">
             <div className="bg-green-50 border border-green-200 p-6 rounded-xl">
@@ -175,7 +176,7 @@ export default function DataCollectorPage() {
           </div>
         )}
 
-        
+        {/* STEP 4: SUCCESS & LINK GENERATION */}
         {step === "success" && (
           <div className="space-y-6 animate-in zoom-in-95 fade-in duration-500 text-center">
             <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
@@ -203,7 +204,7 @@ export default function DataCollectorPage() {
           </div>
         )}
 
-        
+        {/* Info Footer */}
         <div className="mt-8 pt-8 border-t border-gray-100 flex gap-4 items-start">
           <div className="shrink-0 w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
