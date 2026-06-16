@@ -18,7 +18,7 @@ export default function Header() {
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
-  // NEW: State to track if the Workspace drawer is open
+  // State to track if the Workspace drawer is open
   const [isWorkspaceDrawerOpen, setIsWorkspaceDrawerOpen] = useState(false);
 
   const isWorkspace = pathname === "/workspace";
@@ -117,8 +117,8 @@ export default function Header() {
 
   return (
     <>
-      {/* 🚨 MODIFIED: If the workspace drawer is open, we force -translate-y-full to hide the header completely */}
-      <header className={`sticky top-0 z-40 w-full border-b border-gray-200 bg-white/95 backdrop-blur-sm transition-transform duration-300 ease-in-out ${
+      {/* 🚨 CHANGED TO FIXED: No ghost space left behind when translated up */}
+      <header className={`fixed top-0 left-0 right-0 z-40 w-full border-b border-gray-200 bg-white/95 backdrop-blur-sm transition-transform duration-300 ease-in-out ${
         isWorkspaceDrawerOpen || !isVisible ? "-translate-y-full" : "translate-y-0"
       }`}>
         <div className="max-w-6xl mx-auto flex h-16 items-center justify-between px-4 sm:px-8">
@@ -171,6 +171,9 @@ export default function Header() {
           <AnimatedMenuButton isOpen={isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
         </div>
       </header>
+
+      {/* Spacer to prevent content from jumping behind the fixed header on non-workspace pages */}
+      <div className="h-16 w-full" aria-hidden="true" />
 
       {isMobileMenuOpen && (
         <div 
