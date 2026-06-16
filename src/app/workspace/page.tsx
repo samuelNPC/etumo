@@ -38,6 +38,16 @@ const defaultStructure: ChapterStructure[] = [
   { key: "chapter5", label: "7. Conclusion" },
 ];
 
+const generationQuotes = [
+  "Synthesizing academic literature...",
+  "Structuring conceptual frameworks...",
+  "Aligning with faculty guidelines...",
+  "Formulating research objectives...",
+  "Chaining memory from previous chapters...",
+  "Applying critical analysis...",
+  "Drafting final paragraphs..."
+];
+
 function WorkspaceContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -48,18 +58,21 @@ function WorkspaceContent() {
   
   const [generatingKey, setGeneratingKey] = useState<string | null>(null);
   const [previewChapter, setPreviewChapter] = useState<string | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  
+  // Custom Popups & Animations
+  const [lockedPopup, setLockedPopup] = useState<boolean>(false);
+  const [quoteIndex, setQuoteIndex] = useState(0);
 
   const [course, setCourse] = useState("");
   const [customTopic, setCustomTopic] = useState("");
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
 
-  // Supervisor Corrections State
   const [showFeedbackPanel, setShowFeedbackPanel] = useState<boolean>(false);
   const [feedbackText, setFeedbackText] = useState<string>("");
   const [applyingCorrection, setApplyingCorrection] = useState<boolean>(false);
 
+  // Fetch Project Data
   useEffect(() => {
     if (!projectId) {
       setLoading(false);
@@ -83,10 +96,16 @@ function WorkspaceContent() {
     fetchProject();
   }, [projectId]);
 
-  const showToast = (message: string) => {
-    setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
+  // Rotate quotes every 3 seconds while generating
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (generatingKey) {
+      interval = setInterval(() => {
+        setQuoteIndex((prev) => (prev + 1) % generationQuotes.length);
+      }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [generatingKey]);
 
   const handleGuidelinesComplete = async () => {
     if (!projectId) return;
@@ -131,6 +150,7 @@ function WorkspaceContent() {
   const handleGenerateChapter = async (chapterKey: string) => {
     if (!projectId) return;
     setGeneratingKey(chapterKey);
+    setQuoteIndex(0); // Reset quote on new generation
 
     try {
       const res = await fetch("/api/chapters", {
@@ -141,6 +161,10 @@ function WorkspaceContent() {
 
       const data = await res.json();
       if (data.chapterContent) {
+        
+        // 🚨 STRICT REGEX CLEANUP: Remove all asterisks used for bolding
+        const cleanContent = data.chapterContent.replace(/\*\*/g, "");
+
         setProject((prev) => {
           if (!prev) return null;
           return {
@@ -148,16 +172,16 @@ function WorkspaceContent() {
             progress: prev.progress + 15,
             content: {
               ...prev.content,
-              [chapterKey]: data.chapterContent,
+              [chapterKey]: cleanContent,
             },
           };
         });
         setPreviewChapter(chapterKey);
       } else {
-        showToast(data.error || "Failed to generate chapter.");
+        alert(data.error || "Failed to generate chapter.");
       }
     } catch (err) {
-      showToast("Error processing generation pipeline.");
+      alert("Error processing generation pipeline.");
     } finally {
       setGeneratingKey(null);
     }
@@ -188,7 +212,7 @@ function WorkspaceContent() {
       window.URL.revokeObjectURL(url);
       a.remove();
     } catch (error) {
-      showToast("Error downloading document.");
+      alert("Error downloading document.");
     }
   };
 
@@ -215,7 +239,7 @@ function WorkspaceContent() {
       window.URL.revokeObjectURL(url);
       a.remove();
     } catch (error) {
-      showToast("Error compiling full document.");
+      alert("Error compiling full document.");
     }
   };
 
@@ -286,14 +310,30 @@ function WorkspaceContent() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 pb-24 relative">
       
-      {/* TOAST NOTIFICATION */}
-      {toastMessage && (
-        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[100] bg-black text-white px-6 py-3 rounded-full shadow-2xl text-sm font-bold tracking-wide animate-in fade-in slide-in-from-top-4 duration-300 flex items-center gap-2">
-          <span>🔒</span> {toastMessage}
+      {/* 🚨 STRICT CUSTOM POPUP FOR LOCKED SECTIONS */}
+      {lockedPopup && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center animate-in zoom-in-95 duration-300 border border-gray-100">
+            <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-black text-gray-900 mb-2">Section Locked</h3>
+            <p className="text-sm text-gray-600 mb-8 leading-relaxed">
+              You must generate the previous sections sequentially to unlock this chapter. The Etumo Engine requires earlier context to maintain academic flow.
+            </p>
+            <button 
+              onClick={() => setLockedPopup(false)} 
+              className="w-full bg-black text-white font-bold py-3.5 rounded-xl uppercase tracking-widest text-xs hover:bg-gray-800 transition-colors shadow-md"
+            >
+              I Understand
+            </button>
+          </div>
         </div>
       )}
 
-      {/* HEADER SECTION: Centered Course, Left Aligned Topic */}
+      {/* HEADER SECTION */}
       <div className="mb-10">
         <div className="text-center mb-4">
           <span className="text-xs font-mono uppercase text-[#d97706] tracking-widest font-bold">
@@ -305,7 +345,6 @@ function WorkspaceContent() {
         </h1>
       </div>
 
-      {/* INSTRUCTIONS */}
       <div className="bg-blue-50 border border-blue-100 p-5 rounded-2xl mb-8 flex items-start gap-4">
         <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center shrink-0 font-bold">i</div>
         <div>
@@ -316,7 +355,6 @@ function WorkspaceContent() {
         </div>
       </div>
 
-      {/* INLINE PROGRESS BAR */}
       <div className="mb-8">
         <div className="flex justify-between items-end mb-2">
           <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Project Completion</span>
@@ -327,46 +365,48 @@ function WorkspaceContent() {
         </div>
       </div>
 
-      {/* LINEAR STEP LIST */}
       <div className="space-y-4">
         {currentStructure.map((chapter, index) => {
           const isGenerated = generatedChapters.includes(chapter.key);
+          const isGuidelinesStep = chapter.key === "guidelines";
           
           let isLocked = false;
-          if (!isGuidelinesUploaded && chapter.key !== "guidelines") {
+          if (!isGuidelinesUploaded && !isGuidelinesStep) {
             isLocked = true;
           } else if (!isGenerated && firstUngeneratedIndex !== -1 && index > firstUngeneratedIndex) {
             isLocked = true;
           }
 
-          const isNextUp = !isGenerated && !isLocked && chapter.key !== "guidelines";
+          const isNextUp = !isGenerated && !isLocked && !isGuidelinesStep;
 
-          // Dynamic Colors
-          const bgClass = isGenerated ? 'bg-green-50 border-green-200' 
-                        : isNextUp ? 'bg-orange-50 border-orange-300 shadow-md ring-1 ring-orange-500/20' 
-                        : 'bg-gray-50 border-gray-200 opacity-80';
+          // 🚨 DYNAMIC COLORS (Including Green for Guidelines)
+          let bgClass = 'bg-gray-50 border-gray-200 opacity-80';
+          if ((isGuidelinesStep && isGuidelinesUploaded) || (isGenerated && !isGuidelinesStep)) {
+            bgClass = 'bg-green-50 border-green-200';
+          } else if (isNextUp || (isGuidelinesStep && !isGuidelinesUploaded)) {
+            bgClass = 'bg-orange-50 border-orange-300 shadow-md ring-1 ring-orange-500/20';
+          }
+
+          const isCurrentlyGenerating = generatingKey === chapter.key;
 
           return (
-            <div key={chapter.key} className={`border rounded-2xl overflow-hidden transition-all duration-300 ${bgClass}`}>
+            <div key={chapter.key} className={`border rounded-2xl overflow-hidden transition-all duration-300 flex flex-col ${bgClass}`}>
               <div 
                 className={`p-5 sm:p-6 flex flex-col sm:flex-row justify-between gap-4 ${isLocked ? 'cursor-not-allowed' : ''}`}
-                onClick={() => { if (isLocked) showToast("You must generate the previous sections to unlock this."); }}
+                onClick={() => { if (isLocked) setLockedPopup(true); }}
               >
-                {/* Left Side: Label & Done Status */}
                 <div className="flex flex-col justify-center">
                   <div className="flex items-center gap-3 mb-1">
                     <h3 className={`font-bold sm:text-lg tracking-tight ${isLocked ? 'text-gray-500' : 'text-gray-900'}`}>
                       {chapter.label}
                     </h3>
                     
-                    {/* Top Right "DONE" indicator directly next to text */}
-                    {(chapter.key === "guidelines" && isGuidelinesUploaded) || (isGenerated && chapter.key !== "guidelines") ? (
+                    {((isGuidelinesStep && isGuidelinesUploaded) || (isGenerated && !isGuidelinesStep)) ? (
                       <span className="bg-green-200 text-green-800 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest">
                         DONE
                       </span>
                     ) : null}
                     
-                    {/* SVG Lock Icon for locked items */}
                     {isLocked && (
                       <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -374,13 +414,12 @@ function WorkspaceContent() {
                     )}
                   </div>
                   <p className="text-xs text-gray-500">
-                    {chapter.key === "guidelines" ? "Configures AI formatting" : "Academic drafting phase"}
+                    {isGuidelinesStep ? "Configures AI formatting" : "Academic drafting phase"}
                   </p>
                 </div>
 
-                {/* Right Side: Action Buttons */}
                 <div className="shrink-0 flex items-center justify-start sm:justify-end mt-2 sm:mt-0">
-                  {chapter.key === "guidelines" ? (
+                  {isGuidelinesStep ? (
                     isGuidelinesUploaded ? (
                       <span className="text-xs font-bold text-green-600 border border-green-200 bg-white px-3 py-2 rounded-lg">Learned ✓</span>
                     ) : (
@@ -403,17 +442,27 @@ function WorkspaceContent() {
                           : 'bg-[#d97706] text-white hover:bg-[#b45309] border-[#d97706] shadow-sm'
                       }`}
                     >
-                      {generatingKey === chapter.key ? "Drafting..." : "Generate"}
+                      {isCurrentlyGenerating ? "Drafting..." : "Generate"}
                     </button>
                   )}
                 </div>
               </div>
+
+              {/* 🚨 ROTATING ANIMATED QUOTES (Only shows when this specific chapter is generating) */}
+              {isCurrentlyGenerating && (
+                <div className="bg-orange-100/50 border-t border-orange-200 px-6 py-3 flex items-center gap-3 animate-in fade-in duration-300">
+                  <div className="w-4 h-4 border-2 border-[#d97706] border-t-transparent rounded-full animate-spin shrink-0" />
+                  <span className="text-xs font-mono text-[#d97706] uppercase tracking-widest animate-pulse font-bold">
+                    {generationQuotes[quoteIndex]}
+                  </span>
+                </div>
+              )}
+
             </div>
           );
         })}
       </div>
 
-      {/* PERMANENT DOWNLOAD FULL REPORT BUTTON */}
       <div className="mt-12 bg-white border border-gray-200 p-8 rounded-2xl text-center shadow-sm">
         <h3 className="text-xl font-black text-gray-900 mb-2">Complete Research Compilation</h3>
         <p className="text-gray-600 text-sm mb-6 max-w-lg mx-auto">
@@ -427,7 +476,6 @@ function WorkspaceContent() {
         </button>
       </div>
 
-      {/* NAVIGATION FOOTER WITH DESCRIPTIONS */}
       <div className="mt-12 pt-8 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Link href="/originality" className="flex flex-col border border-yellow-300 bg-yellow-50 p-5 rounded-2xl hover:bg-yellow-100 transition-colors">
           <span className="text-sm font-bold text-yellow-900 uppercase tracking-widest mb-1">Originality Center</span>
@@ -443,7 +491,6 @@ function WorkspaceContent() {
       {previewChapter && project.content && project.content[previewChapter] && (
         <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300">
           
-          {/* Modal Header (Reduced Height) */}
           <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2 bg-gray-50 shrink-0 shadow-sm z-10">
             <button 
               onClick={() => handleDownloadSingle(previewChapter)}
@@ -460,16 +507,13 @@ function WorkspaceContent() {
             </button>
           </div>
           
-          {/* Modal Body (No padding, maximum space) */}
           <div className="flex-1 overflow-y-auto bg-white">
             <div className="max-w-4xl mx-auto w-full min-h-full flex flex-col">
               
-              {/* Document Text */}
-              <div className="flex-1">
+              <div className="flex-1 p-4 sm:p-8">
                 <LockedDocumentViewer content={project.content[previewChapter]} />
               </div>
 
-              {/* SUPERVISOR CORRECTIONS BLOCK AT THE BOTTOM */}
               <div className="border-t border-gray-200 bg-gray-50 p-6 sm:p-10">
                 <div className="max-w-3xl mx-auto">
                   {!showFeedbackPanel ? (
