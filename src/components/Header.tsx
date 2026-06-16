@@ -18,12 +18,24 @@ export default function Header() {
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
-  // ONLY hide header if we are on the Workspace page
+  // NEW: State to track if the Workspace drawer is open
+  const [isWorkspaceDrawerOpen, setIsWorkspaceDrawerOpen] = useState(false);
+
   const isWorkspace = pathname === "/workspace";
+
+  // Listen for the workspace drawer toggle event
+  useEffect(() => {
+    const handleDrawerEvent = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      setIsWorkspaceDrawerOpen(customEvent.detail.isOpen);
+    };
+
+    window.addEventListener("etomu-workspace-drawer", handleDrawerEvent);
+    return () => window.removeEventListener("etomu-workspace-drawer", handleDrawerEvent);
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
-      // If we are NOT on the workspace page, always keep the header visible.
       if (!isWorkspace) {
         setIsVisible(true);
         return;
@@ -105,7 +117,10 @@ export default function Header() {
 
   return (
     <>
-      <header className={`sticky top-0 z-40 w-full border-b border-gray-200 bg-white/95 backdrop-blur-sm transition-transform duration-300 ease-in-out ${isVisible ? "translate-y-0" : "-translate-y-full"}`}>
+      {/* 🚨 MODIFIED: If the workspace drawer is open, we force -translate-y-full to hide the header completely */}
+      <header className={`sticky top-0 z-40 w-full border-b border-gray-200 bg-white/95 backdrop-blur-sm transition-transform duration-300 ease-in-out ${
+        isWorkspaceDrawerOpen || !isVisible ? "-translate-y-full" : "translate-y-0"
+      }`}>
         <div className="max-w-6xl mx-auto flex h-16 items-center justify-between px-4 sm:px-8">
 
           <BrandLogo />
