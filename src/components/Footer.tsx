@@ -20,24 +20,40 @@ export default function Footer() {
   return (
     <footer className="bg-white border-t border-gray-200 pt-16 pb-8 mt-auto">
       <div className="max-w-6xl mx-auto px-4 sm:px-8">
-        
+
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
-          
-          {/* Column 1: Brand & Description */}
+
+          {/* Column 1: Brand, Description & Contact */}
           <div className="md:col-span-1">
             <div className="mb-4">
               <BrandLogo />
             </div>
-            <p className="text-sm text-gray-500 font-medium leading-relaxed max-w-xs">
+            <p className="text-sm text-gray-500 font-medium leading-relaxed max-w-xs mb-6">
               An AI-powered workspace that helps students and writers move from idea to submission-ready documents faster.
             </p>
+            
+            {/* Admin Contact Info */}
+            <div className="text-sm text-gray-500 flex flex-col gap-1.5">
+              <p className="font-bold text-gray-900 mb-1">Contact admin at:</p>
+              <p>
+                <span className="font-medium text-gray-600">Email:</span>{" "}
+                <a href="mailto:samuel@etomu.com" className="hover:text-[#4285F4] transition-colors">samuel@etomu.com</a>
+              </p>
+              <p>
+                <span className="font-medium text-gray-600">Phone:</span>{" "}
+                <a href="tel:0759997376" className="hover:text-[#34A853] transition-colors">0759997376</a>
+              </p>
+              <p>
+                <span className="font-medium text-gray-600">Location:</span> Kabale District
+              </p>
+            </div>
           </div>
 
           {/* Column 2: Product */}
           <div>
             <h4 className="font-bold text-gray-900 mb-4 tracking-tight">Product</h4>
             <ul className="flex flex-col gap-3">
-              <li><Link href="/dashboard" className="text-sm text-gray-500 hover:text-black transition-colors">My Projects</Link></li>
+              <li><Link href="/workspace" className="text-sm text-gray-500 hover:text-black transition-colors">Workspace</Link></li>
               <li><Link href="/originality" className="text-sm text-gray-500 hover:text-black transition-colors">Originality Center</Link></li>
               <li><Link href="/dashboard" className="text-sm text-gray-500 hover:text-black transition-colors">Dashboard</Link></li>
             </ul>
@@ -67,10 +83,10 @@ export default function Footer() {
 
         {/* Bottom Section: Copyright & Socials */}
         <div className="pt-8 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-sm text-gray-400 font-medium">
-            &copy; {currentYear} Etomu. All rights reserved.
+          <p className="text-sm text-gray-400 font-medium text-center sm:text-left">
+            &copy; {currentYear} Etomu. Powered by Etomu Holdings.
           </p>
-          
+
           <div className="flex gap-4">
             <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[#4285F4] transition-colors">
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-1.29 2.213-.669 5.108 1.523 6.574-.806-.026-1.566-.247-2.229-.616-.054 2.281 1.581 4.415 3.949 4.89-.693.188-1.452.232-2.224.084.626 1.956 2.444 3.379 4.6 3.419-2.07 1.623-4.678 2.348-7.29 2.04 2.179 1.397 4.768 2.212 7.548 2.212 9.142 0 14.307-7.721 13.995-14.646.962-.695 1.797-1.562 2.457-2.549z"/></svg>
