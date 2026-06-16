@@ -59,6 +59,7 @@ function WorkspaceContent() {
   const [feedbackText, setFeedbackText] = useState<string>("");
   const [applyingCorrection, setApplyingCorrection] = useState<boolean>(false);
 
+  // 🚨 SMART ROUTING: Auto-selects the "Next Step" on load
   useEffect(() => {
     if (!projectId) {
       setLoading(false);
@@ -73,10 +74,21 @@ function WorkspaceContent() {
           const data = docSnap.data() as ProjectData;
           setProject(data);
 
-          if (data.guidelines?.isCustomized && activeChapter === "guidelines") {
-            const structure = data.guidelines.structure || defaultStructure;
-            if (structure.length > 1) {
-              setActiveChapter(structure[1].key); 
+          const structure = data.guidelines?.isCustomized ? (data.guidelines.structure || defaultStructure) : defaultStructure;
+          const generatedKeys = Object.keys(data.content || {});
+
+          if (!data.guidelines?.isCustomized) {
+            setActiveChapter("guidelines");
+          } else {
+            // Find the first chapter that has NOT been generated yet (excluding guidelines)
+            let nextIndex = structure.findIndex(c => c.key !== "guidelines" && !generatedKeys.includes(c.key));
+            
+            if (nextIndex === -1) {
+              // Everything is generated! Highlight the final item on the list.
+              setActiveChapter(structure[structure.length - 1].key);
+            } else {
+              // Highlight the next pending step
+              setActiveChapter(structure[nextIndex].key);
             }
           }
         }
@@ -100,7 +112,7 @@ function WorkspaceContent() {
 
       const structure = updatedProject.guidelines?.structure || defaultStructure;
       if (structure.length > 1) {
-        setActiveChapter(structure[1].key);
+        setActiveChapter(structure[1].key); // Moves to step 2 automatically
       }
     }
   };
@@ -130,6 +142,8 @@ function WorkspaceContent() {
     }
   };
 
+  const currentStructure = project?.guidelines?.isCustomized ? project.guidelines.structure : defaultStructure;
+
   const handleGenerateChapter = async () => {
     if (!projectId || !activeChapter || activeChapter === "guidelines") return;
     setGenerating(true);
@@ -154,6 +168,13 @@ function WorkspaceContent() {
             },
           };
         });
+
+        // 🚨 AUTO-ADVANCE: Once generation finishes, highlight the next step automatically!
+        const currentIndex = currentStructure.findIndex(c => c.key === activeChapter);
+        if (currentIndex !== -1 && currentIndex < currentStructure.length - 1) {
+           setActiveChapter(currentStructure[currentIndex + 1].key);
+        }
+
       } else {
         alert(data.error || "Failed to generate chapter.");
       }
@@ -163,8 +184,6 @@ function WorkspaceContent() {
       setGenerating(false);
     }
   };
-
-  const currentStructure = project?.guidelines?.isCustomized ? project.guidelines.structure : defaultStructure;
 
   const handleDownload = async () => {
     if (!projectId || !activeChapter) return;
