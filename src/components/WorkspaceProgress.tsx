@@ -29,7 +29,6 @@ export default function WorkspaceProgress({
 }: WorkspaceProgressProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Helper function to change drawer state and broadcast it globally
   const toggleDrawer = (nextState: boolean) => {
     setIsOpen(nextState);
     window.dispatchEvent(
@@ -46,13 +45,12 @@ export default function WorkspaceProgress({
   const firstUngeneratedIndex = structure.findIndex(c => !generatedChapters.includes(c.key));
 
   return (
-    <aside className="w-full md:w-64 flex-shrink-0 flex flex-col sticky top-0 md:top-4 z-40 self-start">
+    // 🚨 RESTORED: sticky top-0 with z-[60] ensures it acts as the master header on scroll
+    <aside className="w-full md:w-64 flex-shrink-0 flex flex-col sticky top-0 z-[60] md:top-4 md:z-40 self-start">
 
-      {/* Placeholder to hold the space when the black bar becomes fixed */}
       <div className="md:hidden w-full h-14">
-        {/* The Black Anchor Bar - Snaps to top-0 and z-[60] so it ALWAYS sits above the drawer */}
         <div className={`w-full h-14 bg-black border-b border-gray-800 transition-none ${
-          isOpen ? "fixed top-0 left-0 right-0 z-[60]" : "relative z-50"
+          isOpen ? "fixed top-0 left-0 right-0 z-[70]" : "relative z-[60]"
         }`}>
           <button
             onClick={() => toggleDrawer(!isOpen)}
@@ -75,22 +73,18 @@ export default function WorkspaceProgress({
         </div>
       </div>
 
-      {/* MOBILE BACKDROP OVERLAY (Glass blur on the left gap) */}
       <div 
-        className={`md:hidden fixed inset-0 top-14 z-40 bg-black/40 backdrop-blur-sm transition-all duration-300 ${
+        className={`md:hidden fixed inset-0 top-14 z-[50] bg-black/40 backdrop-blur-sm transition-all duration-300 ${
           isOpen ? "opacity-100 visible" : "opacity-0 invisible"
         }`}
         onClick={() => toggleDrawer(false)}
       />
 
-      {/* DRAWER MENU: Slides from the RIGHT (translate-x-full) to the left */}
-      {/* 🚨 FIX: Removed md:hidden from the classes below so it stays visible on desktop */}
       <div className={`
-        fixed inset-y-0 right-0 top-14 w-[85%] max-w-sm z-50 bg-white shadow-2xl transform transition-transform duration-300 flex flex-col
+        fixed inset-y-0 right-0 top-14 w-[85%] max-w-sm z-[60] bg-white shadow-2xl transform transition-transform duration-300 flex flex-col
         ${isOpen ? "translate-x-0" : "translate-x-full"}
         md:flex md:static md:w-full md:max-w-none md:transform-none md:transition-none md:bg-gray-50 md:shadow-none md:border md:border-gray-300 md:h-fit md:max-h-[80vh]
       `}>
-        {/* Full height scroll container */}
         <div className="flex-1 flex flex-col h-full overflow-y-auto p-4">
 
           <div className="mb-6 shrink-0">
@@ -116,6 +110,9 @@ export default function WorkspaceProgress({
                 isLocked = true;
               }
 
+              // 🚨 RESTORED: Logic to detect if this specific chapter is the very next one ready to be drafted
+              const isReadyToGenerate = !isGenerated && !isLocked && !isFree;
+
               return (
                 <button
                   key={chapter.key}
@@ -137,6 +134,9 @@ export default function WorkspaceProgress({
                     <span className="text-xs opacity-60 shrink-0">🔒</span>
                   ) : isFree ? (
                     <span className={`text-[10px] px-1.5 py-0.5 font-bold tracking-wider rounded-sm shrink-0 ${isActive ? 'bg-white border border-blue-200 text-blue-700' : 'bg-blue-100 text-blue-700'}`}>FREE</span>
+                  ) : isReadyToGenerate ? (
+                    // 🚨 RESTORED: Renders the GENERATE badge for the active/unlocked step
+                    <span className={`text-[10px] px-1.5 py-0.5 font-bold tracking-wider rounded-sm shrink-0 ${isActive ? 'bg-[#d97706] text-white' : 'bg-orange-100 text-[#d97706] border border-orange-200'}`}>GENERATE</span>
                   ) : null}
                 </button>
               );
@@ -144,8 +144,6 @@ export default function WorkspaceProgress({
           </nav>
 
           <div className="border-t border-gray-300 pt-4 mt-4 shrink-0 flex flex-col gap-2">
-
-            {/* THE MASTER EXPORT BUTTON */}
             <button 
               onClick={onDownloadFull}
               disabled={progress < 40} 
