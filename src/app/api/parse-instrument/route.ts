@@ -52,8 +52,10 @@ export async function POST(req: Request) {
     ]);
 
     let responseText = result.response.text().trim();
-    responseText = responseText.replace(/```(json)?/gi, "").replace(/
-```/g, "").trim();
+    
+    // Safety Cleanup: Safely formatted to prevent line-break errors during copy-pasting
+    responseText = responseText.replace(/```(json)?/gi, "");
+    responseText = responseText.replace(/```/g, "").trim();
     responseText = responseText.replace(/^(Here is|Sure|Certainly|I have).*?\n/i, "").trim();
 
     const jsonStart = responseText.indexOf('{');
