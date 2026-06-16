@@ -27,21 +27,29 @@ export default function WorkspaceProgress({
 }: WorkspaceProgressProps) {
   const [isOpen, setIsOpen] = useState(false);
 
+  // NEW: Helper function to change drawer state and broadcast it globally
+  const toggleDrawer = (nextState: boolean) => {
+    setIsOpen(nextState);
+    window.dispatchEvent(
+      new CustomEvent("etomu-workspace-drawer", { detail: { isOpen: nextState } })
+    );
+  };
+
   const handleSelect = (key: string, isLocked: boolean) => {
     if (isLocked) return;
     setActiveChapter(key);
-    setIsOpen(false); 
+    toggleDrawer(false); // Closes the drawer and brings the website header back
   };
 
   const firstUngeneratedIndex = structure.findIndex(c => !generatedChapters.includes(c.key));
 
   return (
-    <aside className="w-full md:w-64 flex-shrink-0 flex flex-col sticky top-0 md:top-4 z-50 self-start">
+    <aside className="w-full md:w-64 flex-shrink-0 flex flex-col sticky top-0 md:top-4 z-40 self-start">
 
-      {/* MOBILE: Fixed Height Anchor Header (Always Stays on Top) */}
+      {/* MOBILE: Fixed Height Anchor Header (Stays anchored at top-0 viewport) */}
       <div className="md:hidden w-full h-14 bg-black border-b border-gray-800 z-50 relative">
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => toggleDrawer(!isOpen)}
           className="w-full h-full flex items-center justify-between px-4 font-bold uppercase text-xs tracking-widest text-white transition-colors"
         >
           <span>{isOpen ? "Close Progress Status" : "Show Progress Status"}</span>
@@ -60,16 +68,15 @@ export default function WorkspaceProgress({
         </button>
       </div>
 
-      {/* MOBILE BACKDROP OVERLAY (Blurs the 15% gap on the right) */}
-      {/* top-14 ensures it tucks perfectly underneath the 56px black header */}
+      {/* MOBILE BACKDROP OVERLAY (Glass blur for the 15% right gap) */}
       <div 
         className={`md:hidden fixed inset-0 top-14 z-40 bg-black/40 backdrop-blur-sm transition-all duration-300 ${
           isOpen ? "opacity-100 visible" : "opacity-0 invisible"
         }`}
-        onClick={() => setIsOpen(false)}
+        onClick={() => toggleDrawer(false)}
       />
 
-      {/* DRAWER MENU (Slides from left on Mobile, Static on Desktop) */}
+      {/* DRAWER MENU (Slides beautifully from absolute left) */}
       <div className={`
         md:hidden fixed inset-y-0 top-14 left-0 w-[85%] max-w-sm z-50 bg-white shadow-2xl transform transition-transform duration-300 flex flex-col overflow-hidden
         ${isOpen ? "translate-x-0" : "-translate-x-full"}
