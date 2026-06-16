@@ -4,9 +4,8 @@ export default function WorkspaceLayout({
   children: React.ReactNode;
 }) {
   return (
-    // This provides a clean, full-height background for your workspace
-    // without interfering with the dynamic components inside the page.
-    <div className="min-h-screen bg-white w-full overflow-x-hidden">
+    // Removed overflow-x-hidden so sticky elements can function properly!
+    <div className="min-h-screen bg-white w-full">
       {children}
     </div>
   );
