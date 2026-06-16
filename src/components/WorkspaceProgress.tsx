@@ -27,7 +27,7 @@ export default function WorkspaceProgress({
 }: WorkspaceProgressProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Helper function to change drawer state and broadcast it globally to the main Header
+  // Helper function to change drawer state and broadcast it globally
   const toggleDrawer = (nextState: boolean) => {
     setIsOpen(nextState);
     window.dispatchEvent(
@@ -38,7 +38,7 @@ export default function WorkspaceProgress({
   const handleSelect = (key: string, isLocked: boolean) => {
     if (isLocked) return;
     setActiveChapter(key);
-    toggleDrawer(false); // Closes the drawer and brings the website header back
+    toggleDrawer(false); 
   };
 
   const firstUngeneratedIndex = structure.findIndex(c => !generatedChapters.includes(c.key));
@@ -46,29 +46,34 @@ export default function WorkspaceProgress({
   return (
     <aside className="w-full md:w-64 flex-shrink-0 flex flex-col sticky top-0 md:top-4 z-40 self-start">
 
-      {/* MOBILE: Fixed Height Anchor Header (Stays anchored at top-0 viewport) */}
-      <div className="md:hidden w-full h-14 bg-black border-b border-gray-800 z-50 relative">
-        <button
-          onClick={() => toggleDrawer(!isOpen)}
-          className="w-full h-full flex items-center justify-between px-4 font-bold uppercase text-xs tracking-widest text-white transition-colors"
-        >
-          <span>{isOpen ? "Close Progress Status" : "Show Progress Status"}</span>
-          {isOpen ? (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          ) : (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="4" y1="12" x2="20" y2="12"></line>
-              <line x1="4" y1="6" x2="20" y2="6"></line>
-              <line x1="4" y1="18" x2="20" y2="18"></line>
-            </svg>
-          )}
-        </button>
+      {/* 🚨 FIX: Placeholder to hold the space when the black bar becomes fixed */}
+      <div className="md:hidden w-full h-14">
+        {/* The Black Anchor Bar - Snaps to top-0 and z-[60] so it ALWAYS sits above the drawer */}
+        <div className={`w-full h-14 bg-black border-b border-gray-800 transition-none ${
+          isOpen ? "fixed top-0 left-0 right-0 z-[60]" : "relative z-50"
+        }`}>
+          <button
+            onClick={() => toggleDrawer(!isOpen)}
+            className="w-full h-full flex items-center justify-between px-4 font-bold uppercase text-xs tracking-widest text-white transition-colors"
+          >
+            <span>{isOpen ? "Close Progress Status" : "Show Progress Status"}</span>
+            {isOpen ? (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="4" y1="12" x2="20" y2="12"></line>
+                <line x1="4" y1="6" x2="20" y2="6"></line>
+                <line x1="4" y1="18" x2="20" y2="18"></line>
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
 
-      {/* MOBILE BACKDROP OVERLAY (Glass blur for the 15% right gap) */}
+      {/* MOBILE BACKDROP OVERLAY */}
       <div 
         className={`md:hidden fixed inset-0 top-14 z-40 bg-black/40 backdrop-blur-sm transition-all duration-300 ${
           isOpen ? "opacity-100 visible" : "opacity-0 invisible"
@@ -76,14 +81,13 @@ export default function WorkspaceProgress({
         onClick={() => toggleDrawer(false)}
       />
 
-      {/* DRAWER MENU (Slides beautifully from absolute left, fills complete height) */}
+      {/* DRAWER MENU (Slides underneath the black header) */}
       <div className={`
         md:hidden fixed inset-0 top-14 left-0 w-[85%] max-w-sm z-50 bg-white shadow-2xl transform transition-transform duration-300 flex flex-col
         ${isOpen ? "translate-x-0" : "-translate-x-full"}
         md:flex md:static md:w-full md:max-w-none md:transform-none md:transition-none md:bg-gray-50 md:shadow-none md:border md:border-gray-300 md:h-fit md:max-h-[80vh]
       `}>
-
-        {/* Inner container forces full height and controls the vertical scroll */}
+        {/* Full height scroll container */}
         <div className="flex-1 flex flex-col h-full overflow-y-auto p-4">
           
           <div className="mb-6 shrink-0">
