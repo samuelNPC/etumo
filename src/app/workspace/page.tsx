@@ -191,7 +191,7 @@ function WorkspaceContent() {
     if (!isPaid) return;
 
     try {
-      const res = await fetch("/api/export", {
+      const res = await fetch("/api/compile-document", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId, chapterKey: activeChapter }),
@@ -226,7 +226,7 @@ function WorkspaceContent() {
 
     try {
       // We pass "full" as the chapter key so your backend API knows to combine everything
-      const res = await fetch("/api/export", {
+      const res = await fetch("/api/compile-document", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId, chapterKey: "full", isFullDocument: true }),
@@ -325,7 +325,7 @@ function WorkspaceContent() {
           guidelinesUploaded={isGuidelinesUploaded}
           progress={project.progress} 
           generatedChapters={Object.keys(project?.content || {})}
-          onDownloadFull={handleDownloadFullDocument} 
+          onDownloadFull={handleDownloadFullDocument}
         />
 
         <div className="flex-1 w-full max-w-full overflow-hidden px-4 md:px-0 mt-6 md:mt-0">
