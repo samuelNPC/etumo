@@ -27,7 +27,7 @@ export default function WorkspaceProgress({
 }: WorkspaceProgressProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // NEW: Helper function to change drawer state and broadcast it globally
+  // Helper function to change drawer state and broadcast it globally to the main Header
   const toggleDrawer = (nextState: boolean) => {
     setIsOpen(nextState);
     window.dispatchEvent(
@@ -76,14 +76,16 @@ export default function WorkspaceProgress({
         onClick={() => toggleDrawer(false)}
       />
 
-      {/* DRAWER MENU (Slides beautifully from absolute left) */}
+      {/* DRAWER MENU (Slides beautifully from absolute left, fills complete height) */}
       <div className={`
-        md:hidden fixed inset-y-0 top-14 left-0 w-[85%] max-w-sm z-50 bg-white shadow-2xl transform transition-transform duration-300 flex flex-col overflow-hidden
+        md:hidden fixed inset-0 top-14 left-0 w-[85%] max-w-sm z-50 bg-white shadow-2xl transform transition-transform duration-300 flex flex-col
         ${isOpen ? "translate-x-0" : "-translate-x-full"}
         md:flex md:static md:w-full md:max-w-none md:transform-none md:transition-none md:bg-gray-50 md:shadow-none md:border md:border-gray-300 md:h-fit md:max-h-[80vh]
       `}>
 
-        <div className="p-4 overflow-y-auto flex-1 flex flex-col">
+        {/* Inner container forces full height and controls the vertical scroll */}
+        <div className="flex-1 flex flex-col h-full overflow-y-auto p-4">
+          
           <div className="mb-6 shrink-0">
             <h2 className="font-bold text-lg tracking-tight">Etumo Engine</h2>
             <div className="mt-2 w-full bg-gray-200 h-2">
@@ -142,8 +144,8 @@ export default function WorkspaceProgress({
               Data Collector &rarr;
             </Link>
           </div>
+          
         </div>
-
       </div>
     </aside>
   );
