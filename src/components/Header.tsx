@@ -14,16 +14,13 @@ export default function Header() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   
-  // Smart Header Scroll States
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
-  // State to track if the Workspace drawer is open
   const [isWorkspaceDrawerOpen, setIsWorkspaceDrawerOpen] = useState(false);
 
   const isWorkspace = pathname === "/workspace";
 
-  // Listen for the workspace drawer toggle event
   useEffect(() => {
     const handleDrawerEvent = (e: Event) => {
       const customEvent = e as CustomEvent;
@@ -117,7 +114,6 @@ export default function Header() {
 
   return (
     <>
-      {/* 🚨 CHANGED TO FIXED: No ghost space left behind when translated up */}
       <header className={`fixed top-0 left-0 right-0 z-40 w-full border-b border-gray-200 bg-white/95 backdrop-blur-sm transition-transform duration-300 ease-in-out ${
         isWorkspaceDrawerOpen || !isVisible ? "-translate-y-full" : "translate-y-0"
       }`}>
@@ -172,8 +168,8 @@ export default function Header() {
         </div>
       </header>
 
-      {/* Spacer to prevent content from jumping behind the fixed header on non-workspace pages */}
-      <div className="h-16 w-full" aria-hidden="true" />
+      {/* 🚨 FIX: Hides the ghost space entirely when the drawer opens! */}
+      <div className={`h-16 w-full ${isWorkspaceDrawerOpen ? "hidden" : "block"}`} aria-hidden="true" />
 
       {isMobileMenuOpen && (
         <div 
