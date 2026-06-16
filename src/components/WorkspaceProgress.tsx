@@ -27,7 +27,6 @@ export default function WorkspaceProgress({
 }: WorkspaceProgressProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Helper function to change drawer state and broadcast it globally
   const toggleDrawer = (nextState: boolean) => {
     setIsOpen(nextState);
     window.dispatchEvent(
@@ -46,9 +45,7 @@ export default function WorkspaceProgress({
   return (
     <aside className="w-full md:w-64 flex-shrink-0 flex flex-col sticky top-0 md:top-4 z-40 self-start">
 
-      {/* 🚨 FIX: Placeholder to hold the space when the black bar becomes fixed */}
       <div className="md:hidden w-full h-14">
-        {/* The Black Anchor Bar - Snaps to top-0 and z-[60] so it ALWAYS sits above the drawer */}
         <div className={`w-full h-14 bg-black border-b border-gray-800 transition-none ${
           isOpen ? "fixed top-0 left-0 right-0 z-[60]" : "relative z-50"
         }`}>
@@ -81,13 +78,12 @@ export default function WorkspaceProgress({
         onClick={() => toggleDrawer(false)}
       />
 
-      {/* DRAWER MENU (Slides underneath the black header) */}
+      {/* 🚨 DRAWER MENU: Now slides from the RIGHT (translate-x-full) to the left! */}
       <div className={`
-        md:hidden fixed inset-0 top-14 left-0 w-[85%] max-w-sm z-50 bg-white shadow-2xl transform transition-transform duration-300 flex flex-col
-        ${isOpen ? "translate-x-0" : "-translate-x-full"}
+        md:hidden fixed inset-y-0 right-0 top-14 w-[85%] max-w-sm z-50 bg-white shadow-2xl transform transition-transform duration-300 flex flex-col
+        ${isOpen ? "translate-x-0" : "translate-x-full"}
         md:flex md:static md:w-full md:max-w-none md:transform-none md:transition-none md:bg-gray-50 md:shadow-none md:border md:border-gray-300 md:h-fit md:max-h-[80vh]
       `}>
-        {/* Full height scroll container */}
         <div className="flex-1 flex flex-col h-full overflow-y-auto p-4">
           
           <div className="mb-6 shrink-0">
@@ -118,22 +114,23 @@ export default function WorkspaceProgress({
                   key={chapter.key}
                   onClick={() => handleSelect(chapter.key, isLocked)}
                   disabled={isLocked}
+                  // 🚨 CHANGED: Active state is now a sleek Gray instead of Black
                   className={`text-left p-3 border text-sm flex items-center justify-between group transition-all ${
                     isActive 
-                      ? "bg-black border-black font-bold text-white shadow-sm" 
+                      ? "bg-gray-200 border-gray-400 font-bold text-gray-900 shadow-sm" 
                       : isLocked 
-                        ? "border-transparent text-gray-400 cursor-not-allowed opacity-60 bg-gray-100/50" 
-                        : "border-transparent hover:border-gray-300 hover:bg-gray-50 text-gray-700"
+                        ? "border-transparent text-gray-400 cursor-not-allowed opacity-60 bg-gray-50/50" 
+                        : "border-transparent hover:border-gray-200 hover:bg-gray-50 text-gray-700"
                   }`}
                 >
                   <span className="truncate pr-2">{chapter.label}</span>
 
                   {isGenerated && chapter.key !== "guidelines" ? (
-                    <span className={`text-[10px] px-1.5 py-0.5 font-bold tracking-wider rounded-sm shrink-0 ${isActive ? 'bg-gray-800 text-gray-200' : 'bg-green-100 text-green-700'}`}>DONE ✓</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 font-bold tracking-wider rounded-sm shrink-0 ${isActive ? 'bg-white border border-green-200 text-green-700' : 'bg-green-100 text-green-700'}`}>DONE ✓</span>
                   ) : isLocked ? (
                     <span className="text-xs opacity-60 shrink-0">🔒</span>
                   ) : isFree ? (
-                    <span className={`text-[10px] px-1.5 py-0.5 font-bold tracking-wider rounded-sm shrink-0 ${isActive ? 'bg-gray-800 text-gray-200' : 'bg-blue-100 text-blue-700'}`}>FREE</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 font-bold tracking-wider rounded-sm shrink-0 ${isActive ? 'bg-white border border-blue-200 text-blue-700' : 'bg-blue-100 text-blue-700'}`}>FREE</span>
                   ) : null}
                 </button>
               );
