@@ -18,23 +18,23 @@ export default function Footer() {
   );
 
   return (
-    <footer className="bg-white border-t border-gray-200 pt-16 pb-8 mt-auto">
+    <footer className="bg-white border-t border-gray-200 pt-10 pb-6 mt-auto">
       <div className="max-w-6xl mx-auto px-4 sm:px-8">
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-10">
 
           {/* Column 1: Brand, Description & Contact */}
           <div className="md:col-span-1">
-            <div className="mb-4">
+            <div className="mb-3">
               <BrandLogo />
             </div>
-            <p className="text-sm text-gray-500 font-medium leading-relaxed max-w-xs mb-6">
+            <p className="text-sm text-gray-500 font-medium leading-relaxed max-w-xs mb-5">
               An AI-powered workspace that helps students and writers move from idea to submission-ready documents faster.
             </p>
-            
+
             {/* Admin Contact Info */}
-            <div className="text-sm text-gray-500 flex flex-col gap-1.5">
-              <p className="font-bold text-gray-900 mb-1">Contact admin at:</p>
+            <div className="text-sm text-gray-500 flex flex-col gap-1">
+              <p className="font-bold text-gray-900 mb-0.5">Contact admin at:</p>
               <p>
                 <span className="font-medium text-gray-600">Email:</span>{" "}
                 <a href="mailto:samuel@etomu.com" className="hover:text-[#4285F4] transition-colors">samuel@etomu.com</a>
@@ -51,8 +51,8 @@ export default function Footer() {
 
           {/* Column 2: Product */}
           <div>
-            <h4 className="font-bold text-gray-900 mb-4 tracking-tight">Product</h4>
-            <ul className="flex flex-col gap-3">
+            <h4 className="font-bold text-gray-900 mb-3 tracking-tight">Product</h4>
+            <ul className="flex flex-col gap-2">
               <li><Link href="/workspace" className="text-sm text-gray-500 hover:text-black transition-colors">Workspace</Link></li>
               <li><Link href="/originality" className="text-sm text-gray-500 hover:text-black transition-colors">Originality Center</Link></li>
               <li><Link href="/dashboard" className="text-sm text-gray-500 hover:text-black transition-colors">Dashboard</Link></li>
@@ -61,8 +61,8 @@ export default function Footer() {
 
           {/* Column 3: Resources */}
           <div>
-            <h4 className="font-bold text-gray-900 mb-4 tracking-tight">Resources</h4>
-            <ul className="flex flex-col gap-3">
+            <h4 className="font-bold text-gray-900 mb-3 tracking-tight">Resources</h4>
+            <ul className="flex flex-col gap-2">
               <li><Link href="/how-to" className="text-sm text-gray-500 hover:text-black transition-colors">How to use</Link></li>
               <li><Link href="/about" className="text-sm text-gray-500 hover:text-black transition-colors">About Us</Link></li>
               <li><Link href="/pricing" className="text-sm text-gray-500 hover:text-black transition-colors">Pricing</Link></li>
@@ -71,8 +71,8 @@ export default function Footer() {
 
           {/* Column 4: Legal */}
           <div>
-            <h4 className="font-bold text-gray-900 mb-4 tracking-tight">Legal</h4>
-            <ul className="flex flex-col gap-3">
+            <h4 className="font-bold text-gray-900 mb-3 tracking-tight">Legal</h4>
+            <ul className="flex flex-col gap-2">
               <li><Link href="/terms" className="text-sm text-gray-500 hover:text-black transition-colors">Terms of Service</Link></li>
               <li><Link href="/privacy" className="text-sm text-gray-500 hover:text-black transition-colors">Data we collect</Link></li>
               <li><Link href="/refunds" className="text-sm text-gray-500 hover:text-black transition-colors">Refund Policy</Link></li>
@@ -82,7 +82,7 @@ export default function Footer() {
         </div>
 
         {/* Bottom Section: Copyright & Socials */}
-        <div className="pt-8 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="pt-6 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm text-gray-400 font-medium text-center sm:text-left">
             &copy; {currentYear} Etomu. Powered by Etomu Holdings.
           </p>
