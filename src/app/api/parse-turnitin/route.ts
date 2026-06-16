@@ -1,5 +1,9 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
-import pdfParse from "pdf-parse";
+
+// Upgraded to Pro model: Perfectly extracts complex data directly from PDFs
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
 export async function POST(req: Request) {
   try {
@@ -10,66 +14,69 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
     }
 
-    // Convert the uploaded file into a Node.js Buffer so pdf-parse can read it
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    // Extract all raw text from the PDF
-    const pdfData = await pdfParse(buffer);
-    const text = pdfData.text;
-
-    // --- REGEX EXTRACTION ENGINE ---
-
-    // 1. Find Overall Similarity (e.g., "19% Overall Similarity")
-    const similarityMatch = text.match(/([0-9]+)%\s*Overall Similarity/i);
-    const overallSimilarity = similarityMatch ? parseInt(similarityMatch[1], 10) : 0;
-
-    // 2. Find "Not Cited or Quoted" matches (e.g., "147 Not Cited or Quoted")
-    const notCitedMatch = text.match(/([0-9]+)\s*Not Cited or Quoted/i);
-    const notCited = notCitedMatch ? parseInt(notCitedMatch[1], 10) : 0;
-
-    // 3. Find "Missing Quotations" (e.g., "23 Missing Quotations")
-    const missingQuotesMatch = text.match(/([0-9]+)\s*Missing Quotations/i);
-    const missingQuotations = missingQuotesMatch ? parseInt(missingQuotesMatch[1], 10) : 0;
-
-    // 4. Extract Student Name (Heuristic: Grabs the line right before "Document Details")
-    const nameMatch = text.match(/\n([A-Za-z\s]+)\nDocument Details/i);
-    // Clean up the name by grabbing the last line before "Document Details" if it duplicated
-    const rawNameString = nameMatch ? nameMatch[1].trim() : "Student";
-    const nameArray = rawNameString.split('\n');
-    const studentName = nameArray[nameArray.length - 1].trim(); // Gets "Ampeire Samuel"
-
-    // 5. Extract Top Sources (Grabs the block after the Top Sources intro text)
-    let topSources: string[] = [];
-    const sourcesBlockMatch = text.match(/The sources with the highest number of matches within the submission.*?\n([\s\S]*?)(?:Page \d+ of|Integrity Flags|11\s)/i);
-    
-    if (sourcesBlockMatch) {
-      const sourcesText = sourcesBlockMatch[1];
-      // Extract lines that look like sources (e.g., "Kabale University 1%", "scholar.ucu.ac.ug 1%")
-      // We look for lines ending with a percentage
-      const sourceLines = sourcesText.match(/.*?[0-9]+%/g);
-      if (sourceLines) {
-         topSources = sourceLines.map(line => {
-             // Clean up prefixes like "1 Student papers\n" or "2 Internet\n"
-             const cleanLine = line.replace(/^[0-9]+\s+(Student papers|Internet|Publications)\s*/i, "").trim();
-             return cleanLine;
-         }).slice(0, 5); // Just grab the top 5 to keep the UI clean
-      }
+    const mimeType = file.type;
+    if (mimeType !== "application/pdf") {
+      return NextResponse.json({ error: "Please upload a valid Turnitin PDF report." }, { status: 400 });
     }
 
-    // Return the perfectly structured JSON object to your frontend
-    return NextResponse.json({
-      success: true,
-      data: {
-        studentName,
-        overallSimilarity,
-        issues: {
-          notCited,
-          missingQuotations
+    // Convert the uploaded PDF into a format Gemini can read directly
+    const arrayBuffer = await file.arrayBuffer();
+    const base64Data = Buffer.from(arrayBuffer).toString("base64");
+
+    // 🚨 STRICT PROMPT: Enforces JSON-only output and stops conversational hallucinations
+    const prompt = `
+      You are an expert document analysis AI. Analyze this uploaded Turnitin Similarity Report PDF.
+      Extract the core originality metrics, student details, and top matching sources.
+      
+      CRITICAL RULES - YOU MUST OBEY THESE STRICTLY:
+      1. Return ONLY a raw JSON object. Do not include any conversational filler, introductory phrases, or markdown formatting (like \`\`\`json).
+      2. The output MUST start with "{" and end with "}".
+      
+      Expected JSON Format:
+      {
+        "studentName": "Extracted student name (usually near the top or Document Details)",
+        "overallSimilarity": 19, // Provide the integer value of the overall similarity percentage
+        "issues": {
+          "notCited": 0, // Integer value of 'Not Cited or Quoted' matches (if not found, use 0)
+          "missingQuotations": 0 // Integer value of 'Missing Quotations' (if not found, use 0)
         },
-        topSources
+        "topSources": [
+          "Source Name 1 X%",
+          "Source Name 2 Y%"
+        ] // Array of strings (max 5) of the top sources with their percentages
       }
-    }, { status: 200 });
+    `;
+
+    const result = await model.generateContent([
+      { inlineData: { data: base64Data, mimeType } },
+      prompt,
+    ]);
+
+    let responseText = result.response.text().trim();
+
+    // 🚨 SAFETY CLEANUP: Strips out markdown blocks and isolates the raw JSON string
+    responseText = responseText.replace(/```(json)?/gi, "").replace(/```/g, "").trim();
+    responseText = responseText.replace(/^(Here is|Sure|Certainly|I have).*?\n/i, "").trim();
+    
+    // Failsafe: Ensure we only parse the JSON part if the AI appended extra text at the end
+    const jsonStart = responseText.indexOf('{');
+    const jsonEnd = responseText.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+        responseText = responseText.substring(jsonStart, jsonEnd + 1);
+    }
+
+    let extractedData;
+    try {
+      extractedData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error("Failed to parse Gemini output as JSON. Raw output:", responseText);
+      return NextResponse.json(
+        { error: "The AI failed to format the Turnitin report correctly. Please try again." }, 
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true, data: extractedData }, { status: 200 });
 
   } catch (error) {
     console.error("Error parsing Turnitin PDF:", error);
