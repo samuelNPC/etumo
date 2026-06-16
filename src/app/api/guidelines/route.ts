@@ -3,8 +3,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 
+// Upgraded to the highest quality Pro model for deep document reasoning
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
 export async function POST(req: Request) {
   try {
@@ -37,19 +38,26 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const base64Data = Buffer.from(arrayBuffer).toString("base64");
 
+    // 🚨 STRICT PROMPT: Enforces JSON-only output and stops conversational hallucinations
     const prompt = `
-      You are an academic structuring AI. Analyze this uploaded university research guideline document.
+      You are an expert academic structuring AI. Analyze this uploaded university research guideline document.
       Extract the required research structure and formatting rules.
       
-      Return ONLY a raw JSON object with this exact structure (no markdown tags, no backticks, no code blocks):
+      CRITICAL RULES - YOU MUST OBEY THESE STRICTLY:
+      1. Return ONLY a raw JSON object. Do not include any conversational filler, introductory phrases, or markdown formatting (like \`\`\`json).
+      2. The output MUST start with "{" and end with "}".
+      3. Always ensure keys in the structure array are formatted sequentially like 'chapter1', 'chapter2', etc. 
+      4. Include preliminary pages if mentioned.
+
+      Expected JSON Format:
       {
         "formattingRules": "Extracted rules like font size, spacing, citation style (e.g., APA 7th). If not found, write 'Standard Academic Format'.",
         "structure": [
-          { "key": "chapter1", "label": "Exact Name of First Chapter" },
-          { "key": "chapter2", "label": "Exact Name of Second Chapter" }
+          { "key": "guidelines", "label": "1. Faculty Guidelines" },
+          { "key": "preliminaryPages", "label": "2. Preliminary Pages" },
+          { "key": "chapter1", "label": "3. Exact Name of First Chapter" }
         ]
       }
-      Always ensure keys are formatted sequentially like 'chapter1', 'chapter2', etc. Include preliminary pages if mentioned.
     `;
 
     const result = await model.generateContent([
@@ -58,7 +66,17 @@ export async function POST(req: Request) {
     ]);
 
     let responseText = result.response.text().trim();
-    responseText = responseText.replace(/```json/gi, "").replace(/```/g, "").trim();
+
+    // 🚨 SAFETY CLEANUP: Strips out markdown blocks and isolates the raw JSON string
+    responseText = responseText.replace(/```(json)?/gi, "").replace(/```/g, "").trim();
+    responseText = responseText.replace(/^(Here is|Sure|Certainly|I have).*?\n/i, "").trim();
+    
+    // Failsafe: Ensure we only parse the JSON part if the AI appended extra text at the end
+    const jsonStart = responseText.indexOf('{');
+    const jsonEnd = responseText.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+        responseText = responseText.substring(jsonStart, jsonEnd + 1);
+    }
 
     let extractedGuidelines;
     try {
@@ -69,6 +87,11 @@ export async function POST(req: Request) {
         { error: "The AI failed to format the response correctly. Please try clicking apply again." }, 
         { status: 500 }
       );
+    }
+
+    // Protect the UI loop: Ensure the "guidelines" key is always present so the user can upload them
+    if (!extractedGuidelines.structure.find((s: any) => s.key === "guidelines")) {
+        extractedGuidelines.structure.unshift({ key: "guidelines", label: "1. Faculty Guidelines" });
     }
 
     const projectRef = doc(db, "projects", projectId);
@@ -83,14 +106,14 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error("Backend processing error:", error);
-    
+
     if (error.message?.includes("404") || error.message?.includes("not found")) {
       return NextResponse.json(
         { error: "AI Model not found. Please check your API configuration." },
         { status: 500 }
       );
     }
-    
+
     if (error.message?.includes("429") || error.message?.includes("Quota")) {
       return NextResponse.json(
         { error: "AI Rate limit exceeded. Please wait a few seconds and try again." },
