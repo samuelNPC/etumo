@@ -72,7 +72,7 @@ export default function Header() {
 
   const handleLoginSuccess = () => {
     setShowAuthModal(false);
-    router.push("/workspace");
+    router.push("/dashboard");
   };
 
   const handleLogout = async () => {
@@ -140,10 +140,10 @@ export default function Header() {
             {user ? (
               <div className="flex items-center gap-4 border-l border-gray-300 pl-8">
                 <button 
-                  onClick={() => router.push("/workspace")}
+                  onClick={() => router.push("/dashboard")}
                   className="text-sm font-bold text-gray-800 hover:text-[#d97706] transition-colors"
                 >
-                  Workspace
+                  Go to Dashboard
                 </button>
                 <button 
                   onClick={handleLogout}
