@@ -9,10 +9,31 @@ import { onAuthStateChanged, signOut, User } from "firebase/auth";
 
 export default function Header() {
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname(); // Allows us to track the current page
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  
+  // Smart Header Scroll States
+  const [isVisible, setIsVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
+
+  // 1. Hide/Show Header on Scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      // If we scroll down past 60px, hide the header. If we scroll up, show it.
+      if (currentScrollY > lastScrollY && currentScrollY > 60) {
+        setIsVisible(false);
+      } else {
+        setIsVisible(true);
+      }
+      setLastScrollY(currentScrollY);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [lastScrollY]);
 
   // Close mobile menu when route changes
   useEffect(() => {
@@ -50,6 +71,9 @@ export default function Header() {
     }
   };
 
+  // Reusable Active Link Helper
+  const isActive = (path: string) => pathname === path;
+
   // Reusable Scaled Brand Logo
   const BrandLogo = () => (
     <Link href="/" className="flex items-center gap-3" onClick={() => setIsMobileMenuOpen(false)}>
@@ -64,7 +88,6 @@ export default function Header() {
     </Link>
   );
 
-  // Reusable Animated Hamburger/X Button
   const AnimatedMenuButton = ({ isOpen, onClick }: { isOpen: boolean, onClick: () => void }) => (
     <button
       className="md:hidden flex flex-col justify-center items-center w-10 h-10 group focus:outline-none"
@@ -79,25 +102,37 @@ export default function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 w-full border-b border-gray-200 bg-white/95 backdrop-blur-sm">
-        {/* Reduced height from h-20 to h-16 */}
+      {/* SMART HEADER WRAPPER: Transforms out of view when scrolling down */}
+      <header className={`sticky top-0 z-40 w-full border-b border-gray-200 bg-white/95 backdrop-blur-sm transition-transform duration-300 ease-in-out ${isVisible ? "translate-y-0" : "-translate-y-full"}`}>
         <div className="max-w-6xl mx-auto flex h-16 items-center justify-between px-4 sm:px-8">
-          
+
           <BrandLogo />
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex gap-8 items-center">
-            <Link href="/" className="text-sm font-semibold text-gray-600 hover:text-black transition-colors">Home</Link>
-            <Link href="/dashboard" className="text-sm font-semibold text-gray-600 hover:text-black transition-colors">My Projects</Link>
-            <Link href="/originality" className="text-sm font-semibold text-gray-600 hover:text-black transition-colors">Originality center</Link>
+            <Link href="/" className={`text-sm transition-colors ${isActive("/") ? "text-black font-bold" : "text-gray-600 font-semibold hover:text-black"}`}>Home</Link>
+            <Link href="/dashboard" className={`text-sm transition-colors ${isActive("/dashboard") ? "text-black font-bold" : "text-gray-600 font-semibold hover:text-black"}`}>My Projects</Link>
             
+            {/* DESKTOP DROPDOWN FOR TOOLS */}
+            <div className="relative group py-4">
+              <button className={`flex items-center gap-1 text-sm transition-colors ${isActive("/originality") || isActive("/data-collector") ? "text-black font-bold" : "text-gray-600 font-semibold hover:text-black"}`}>
+                Research Tools
+                <svg className="w-4 h-4 transition-transform group-hover:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              
+              <div className="absolute top-12 left-0 w-48 bg-white border border-gray-100 shadow-xl rounded-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 overflow-hidden">
+                <Link href="/originality" className={`block px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${isActive("/originality") ? "text-black font-bold bg-gray-50" : "text-gray-700"}`}>Originality Center</Link>
+                <Link href="/data-collector" className={`block px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${isActive("/data-collector") ? "text-[#d97706] font-bold bg-orange-50/50" : "text-gray-700"}`}>Data Collector</Link>
+              </div>
+            </div>
+
             {user ? (
               <div className="flex items-center gap-4 border-l border-gray-300 pl-8">
                 <button 
-                  onClick={() => router.push("/dashboard")}
+                  onClick={() => router.push("/workspace")}
                   className="text-sm font-bold text-gray-800 hover:text-[#d97706] transition-colors"
                 >
-                  Dashboard
+                  Workspace
                 </button>
                 <button 
                   onClick={handleLogout}
@@ -118,12 +153,11 @@ export default function Header() {
             )}
           </nav>
 
-          {/* Morphing Hamburger Button for Main Header */}
-          <AnimatedMenuButton isOpen={isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(true)} />
+          <AnimatedMenuButton isOpen={isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
         </div>
       </header>
 
-      {/* Mobile Drawer Overlay (Blurred Backdrop) */}
+      {/* Mobile Drawer Overlay */}
       {isMobileMenuOpen && (
         <div 
           className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden transition-opacity"
@@ -131,27 +165,25 @@ export default function Header() {
         />
       )}
 
-      {/* Mobile Drawer Menu (Sliding from Right, Leaves space on Left) */}
+      {/* Mobile Drawer Menu */}
       <div className={`fixed inset-y-0 right-0 w-4/5 max-w-sm bg-white z-50 transform transition-transform duration-300 ease-in-out md:hidden flex flex-col shadow-2xl ${
         isMobileMenuOpen ? "translate-x-0" : "translate-x-full"
       }`}>
-        
-        {/* Drawer Header (Own Logo & Animated Close Button) */}
-        {/* Kept h-16 here to perfectly match the main header height */}
+
         <div className="flex items-center justify-between p-4 border-b border-gray-100 h-16">
           <BrandLogo />
           <AnimatedMenuButton isOpen={isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(false)} />
         </div>
 
         <nav className="flex flex-col px-6 py-4 flex-grow overflow-y-auto">
-          {/* Primary Links (Normal Weight, Black, Line Separators) */}
+          {/* Primary Links with Active Highlighting */}
           <div className="flex flex-col">
-            <Link href="/" className="text-lg font-normal text-black py-4 border-b border-gray-200">Home</Link>
-            <Link href="/dashboard" className="text-lg font-normal text-black py-4 border-b border-gray-200">My Projects</Link>
-            <Link href="/originality" className="text-lg font-normal text-black py-4 border-b border-gray-200">Originality center</Link>
+            <Link href="/" className={`text-lg py-4 border-b border-gray-200 transition-colors ${isActive("/") ? "font-bold text-black" : "font-normal text-gray-700"}`}>Home</Link>
+            <Link href="/dashboard" className={`text-lg py-4 border-b border-gray-200 transition-colors ${isActive("/dashboard") ? "font-bold text-black" : "font-normal text-gray-700"}`}>My Projects</Link>
+            <Link href="/originality" className={`text-lg py-4 border-b border-gray-200 transition-colors ${isActive("/originality") ? "font-bold text-black" : "font-normal text-gray-700"}`}>Originality Center</Link>
+            <Link href="/data-collector" className={`text-lg py-4 border-b border-gray-200 transition-colors ${isActive("/data-collector") ? "font-bold text-[#d97706]" : "font-normal text-gray-700"}`}>Data Collector</Link>
           </div>
 
-          {/* Secondary Links */}
           <div className="flex flex-col gap-5 pt-6">
             <Link href="/about" className="text-base font-medium text-gray-500 hover:text-black">About</Link>
             <Link href="/how-to" className="text-base font-medium text-gray-500 hover:text-black">How to use</Link>
@@ -159,16 +191,15 @@ export default function Header() {
             <Link href="/terms" className="text-base font-medium text-gray-500 hover:text-black">Terms</Link>
           </div>
 
-          {/* Auth Section at the Bottom */}
           <div className="mt-auto pt-8 pb-4">
             {user ? (
               <div className="flex flex-col gap-3">
                 <p className="text-sm font-medium text-gray-500 mb-2">Signed in as {user.email?.split('@')[0]}</p>
                 <button 
-                  onClick={() => router.push("/dashboard")}
+                  onClick={() => router.push("/workspace")}
                   className="bg-black text-white px-4 py-4 text-base font-bold w-full rounded-lg transition-colors"
                 >
-                  Go to Dashboard
+                  Enter Workspace
                 </button>
                 <button 
                   onClick={handleLogout}
