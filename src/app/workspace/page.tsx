@@ -47,16 +47,18 @@ function WorkspaceContent() {
   const [loading, setLoading] = useState<boolean>(true);
   
   const [generatingKey, setGeneratingKey] = useState<string | null>(null);
-  
-  // Controls which chapter is currently open in the POPUP Modal
   const [previewChapter, setPreviewChapter] = useState<string | null>(null);
-
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [course, setCourse] = useState("");
   const [customTopic, setCustomTopic] = useState("");
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
+
+  // Supervisor Corrections State
+  const [showFeedbackPanel, setShowFeedbackPanel] = useState<boolean>(false);
+  const [feedbackText, setFeedbackText] = useState<string>("");
+  const [applyingCorrection, setApplyingCorrection] = useState<boolean>(false);
 
   useEffect(() => {
     if (!projectId) {
@@ -150,7 +152,6 @@ function WorkspaceContent() {
             },
           };
         });
-        // Automatically open the popup preview for the newly generated chapter
         setPreviewChapter(chapterKey);
       } else {
         showToast(data.error || "Failed to generate chapter.");
@@ -216,6 +217,12 @@ function WorkspaceContent() {
     } catch (error) {
       showToast("Error compiling full document.");
     }
+  };
+
+  const closePreview = () => {
+    setPreviewChapter(null);
+    setShowFeedbackPanel(false);
+    setFeedbackText("");
   };
 
   if (loading) {
@@ -286,12 +293,14 @@ function WorkspaceContent() {
         </div>
       )}
 
-      {/* HEADER SECTION */}
-      <div className="text-center mb-10">
-        <span className="text-xs font-mono uppercase text-[#d97706] tracking-widest font-bold border border-[#d97706]/30 bg-orange-50 px-3 py-1 rounded-full">
-          {project.course || "Research"} Workspace
-        </span>
-        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900 mt-4 leading-snug">
+      {/* HEADER SECTION: Centered Course, Left Aligned Topic */}
+      <div className="mb-10">
+        <div className="text-center mb-4">
+          <span className="text-xs font-mono uppercase text-[#d97706] tracking-widest font-bold">
+            {project.course || "Research"} Workspace
+          </span>
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900 leading-snug text-left">
           {project.topic}
         </h1>
       </div>
@@ -332,44 +341,55 @@ function WorkspaceContent() {
 
           const isNextUp = !isGenerated && !isLocked && chapter.key !== "guidelines";
 
+          // Dynamic Colors
+          const bgClass = isGenerated ? 'bg-green-50 border-green-200' 
+                        : isNextUp ? 'bg-orange-50 border-orange-300 shadow-md ring-1 ring-orange-500/20' 
+                        : 'bg-gray-50 border-gray-200 opacity-80';
+
           return (
-            <div key={chapter.key} className={`bg-white border rounded-2xl overflow-hidden transition-all duration-300 ${isNextUp ? 'border-[#d97706] shadow-md ring-1 ring-[#d97706]/20' : isLocked ? 'border-gray-100 bg-gray-50/50' : 'border-gray-200'}`}>
-              
+            <div key={chapter.key} className={`border rounded-2xl overflow-hidden transition-all duration-300 ${bgClass}`}>
               <div 
-                className={`p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+                className={`p-5 sm:p-6 flex flex-col sm:flex-row justify-between gap-4 ${isLocked ? 'cursor-not-allowed' : ''}`}
                 onClick={() => { if (isLocked) showToast("You must generate the previous sections to unlock this."); }}
               >
-                <div className="flex items-center gap-4">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${
-                    chapter.key === "guidelines" && isGuidelinesUploaded ? 'bg-green-100 border-green-200 text-green-700' :
-                    isGenerated ? 'bg-green-100 border-green-200 text-green-700' :
-                    isLocked ? 'bg-gray-100 border-gray-200 text-gray-400' :
-                    'bg-orange-100 border-orange-200 text-[#d97706]'
-                  }`}>
-                    {chapter.key === "guidelines" && isGuidelinesUploaded ? '✓' : isGenerated ? '✓' : isLocked ? '🔒' : '•'}
-                  </div>
-                  
-                  <div>
+                {/* Left Side: Label & Done Status */}
+                <div className="flex flex-col justify-center">
+                  <div className="flex items-center gap-3 mb-1">
                     <h3 className={`font-bold sm:text-lg tracking-tight ${isLocked ? 'text-gray-500' : 'text-gray-900'}`}>
                       {chapter.label}
                     </h3>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {chapter.key === "guidelines" ? "Configures AI formatting" : "Academic drafting phase"}
-                    </p>
+                    
+                    {/* Top Right "DONE" indicator directly next to text */}
+                    {(chapter.key === "guidelines" && isGuidelinesUploaded) || (isGenerated && chapter.key !== "guidelines") ? (
+                      <span className="bg-green-200 text-green-800 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest">
+                        DONE
+                      </span>
+                    ) : null}
+                    
+                    {/* SVG Lock Icon for locked items */}
+                    {isLocked && (
+                      <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    )}
                   </div>
+                  <p className="text-xs text-gray-500">
+                    {chapter.key === "guidelines" ? "Configures AI formatting" : "Academic drafting phase"}
+                  </p>
                 </div>
 
-                <div className="shrink-0 flex items-center gap-3">
+                {/* Right Side: Action Buttons */}
+                <div className="shrink-0 flex items-center justify-start sm:justify-end mt-2 sm:mt-0">
                   {chapter.key === "guidelines" ? (
                     isGuidelinesUploaded ? (
-                      <span className="text-xs font-bold text-green-600 bg-green-50 px-3 py-2 rounded-lg border border-green-100">Uploaded & Learned</span>
+                      <span className="text-xs font-bold text-green-600 border border-green-200 bg-white px-3 py-2 rounded-lg">Learned ✓</span>
                     ) : (
                       <GuidelineUploader projectId={projectId as string} onComplete={handleGuidelinesComplete} />
                     )
                   ) : isGenerated ? (
                     <button 
                       onClick={() => setPreviewChapter(chapter.key)}
-                      className="bg-gray-100 text-gray-800 hover:bg-gray-200 px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors border border-gray-200"
+                      className="bg-white text-gray-800 hover:bg-gray-100 px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors border border-gray-300 shadow-sm"
                     >
                       Preview
                     </button>
@@ -379,7 +399,7 @@ function WorkspaceContent() {
                       disabled={isLocked || generatingKey !== null}
                       className={`px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors border ${
                         isLocked 
-                          ? 'bg-gray-100 text-gray-400 border-gray-200' 
+                          ? 'bg-transparent text-gray-400 border-gray-300' 
                           : 'bg-[#d97706] text-white hover:bg-[#b45309] border-[#d97706] shadow-sm'
                       }`}
                     >
@@ -393,68 +413,97 @@ function WorkspaceContent() {
         })}
       </div>
 
-      {/* FINAL EXPORT SECTION */}
-      {project.progress > 30 && (
-        <div className="mt-12 bg-green-50 border border-green-200 p-8 rounded-2xl text-center">
-          <h3 className="text-xl font-black text-green-900 mb-2">Ready for Submission?</h3>
-          <p className="text-green-800 text-sm mb-6 max-w-lg mx-auto">
-            Compile all your generated chapters into a single, perfectly formatted Microsoft Word document instantly.
-          </p>
-          <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <button 
-              onClick={handleDownloadFullDocument}
-              className="bg-[#34A853] text-white font-extrabold px-8 py-4 rounded-xl uppercase tracking-widest hover:bg-green-600 transition-colors shadow-lg hover:-translate-y-1"
-            >
-              Compile Full Project
-            </button>
-          </div>
-        </div>
-      )}
+      {/* PERMANENT DOWNLOAD FULL REPORT BUTTON */}
+      <div className="mt-12 bg-white border border-gray-200 p-8 rounded-2xl text-center shadow-sm">
+        <h3 className="text-xl font-black text-gray-900 mb-2">Complete Research Compilation</h3>
+        <p className="text-gray-600 text-sm mb-6 max-w-lg mx-auto">
+          Export all generated chapters into a single, cohesive Microsoft Word document, ready for supervisor review.
+        </p>
+        <button 
+          onClick={handleDownloadFullDocument}
+          className="bg-black text-white font-extrabold px-8 py-4 rounded-xl uppercase tracking-widest hover:bg-gray-800 transition-colors shadow-lg hover:-translate-y-1 w-full sm:w-auto"
+        >
+          Download Full Report
+        </button>
+      </div>
 
-      {/* NAVIGATION FOOTER */}
-      <div className="mt-12 pt-8 border-t border-gray-200 flex flex-col sm:flex-row gap-4 justify-center">
-        <Link href="/originality" className="text-center border border-gray-300 bg-white px-6 py-3 rounded-xl text-xs font-bold text-gray-700 uppercase tracking-widest hover:bg-gray-50 transition-colors">
-          Open Originality Center
+      {/* NAVIGATION FOOTER WITH DESCRIPTIONS */}
+      <div className="mt-12 pt-8 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Link href="/originality" className="flex flex-col border border-yellow-300 bg-yellow-50 p-5 rounded-2xl hover:bg-yellow-100 transition-colors">
+          <span className="text-sm font-bold text-yellow-900 uppercase tracking-widest mb-1">Originality Center</span>
+          <span className="text-xs text-yellow-700 leading-relaxed">Remove similarity and AI percentages with ease.</span>
         </Link>
-        <Link href="/data-collector" className="text-center border border-orange-200 bg-orange-50 px-6 py-3 rounded-xl text-xs font-bold text-[#d97706] uppercase tracking-widest hover:bg-orange-100 transition-colors">
-          Open Data Collector &rarr;
+        <Link href="/data-collector" className="flex flex-col border border-orange-300 bg-orange-50 p-5 rounded-2xl hover:bg-orange-100 transition-colors">
+          <span className="text-sm font-bold text-[#d97706] uppercase tracking-widest mb-1">Data Collector &rarr;</span>
+          <span className="text-xs text-orange-700 leading-relaxed">Digitize research instruments and collect field responses.</span>
         </Link>
       </div>
 
-      {/* PREVIEW POPUP MODAL */}
+      {/* EDGE-TO-EDGE PREVIEW POPUP MODAL */}
       {previewChapter && project.content && project.content[previewChapter] && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
-          {/* Dark overlay backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setPreviewChapter(null)}
-          ></div>
+        <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300">
           
-          {/* Modal Container */}
-          <div className="relative bg-white w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-300 border border-gray-200">
+          {/* Modal Header (Reduced Height) */}
+          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2 bg-gray-50 shrink-0 shadow-sm z-10">
+            <button 
+              onClick={() => handleDownloadSingle(previewChapter)}
+              className="bg-[#d97706] text-white px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-[#b45309] transition-colors shadow-sm"
+            >
+              Download Section &darr;
+            </button>
             
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-gray-200 p-4 sm:px-6 sm:py-4 bg-gray-50 shrink-0">
-              <button 
-                onClick={() => handleDownloadSingle(previewChapter)}
-                className="bg-black text-white px-4 py-2.5 sm:px-6 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-gray-800 transition-colors shadow-sm"
-              >
-                Download Section &darr;
-              </button>
+            <button 
+              onClick={closePreview}
+              className="text-xs font-bold text-gray-500 hover:text-red-600 uppercase tracking-widest transition-colors flex items-center gap-2 px-2 py-2"
+            >
+              Close Preview ✕
+            </button>
+          </div>
+          
+          {/* Modal Body (No padding, maximum space) */}
+          <div className="flex-1 overflow-y-auto bg-white">
+            <div className="max-w-4xl mx-auto w-full min-h-full flex flex-col">
               
-              <button 
-                onClick={() => setPreviewChapter(null)}
-                className="text-xs font-bold text-gray-500 hover:text-red-600 uppercase tracking-widest transition-colors flex items-center gap-2"
-              >
-                Close Preview ✕
-              </button>
-            </div>
-            
-            {/* Modal Body (Scrollable Document) */}
-            <div className="overflow-y-auto p-4 sm:p-8 bg-white flex-1">
-              <div className="max-w-3xl mx-auto border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+              {/* Document Text */}
+              <div className="flex-1">
                 <LockedDocumentViewer content={project.content[previewChapter]} />
               </div>
+
+              {/* SUPERVISOR CORRECTIONS BLOCK AT THE BOTTOM */}
+              <div className="border-t border-gray-200 bg-gray-50 p-6 sm:p-10">
+                <div className="max-w-3xl mx-auto">
+                  {!showFeedbackPanel ? (
+                    <button
+                      onClick={() => setShowFeedbackPanel(true)}
+                      className="w-full bg-white text-gray-800 border border-gray-300 font-bold py-5 uppercase tracking-widest text-xs hover:bg-gray-50 transition-colors rounded-xl shadow-sm"
+                    >
+                      + Add Supervisor Corrections
+                    </button>
+                  ) : (
+                    <div className="flex flex-col gap-4 animate-in slide-in-from-top-2 duration-200 bg-white border border-gray-200 p-6 rounded-2xl shadow-sm">
+                      <h4 className="font-bold text-sm text-gray-800 uppercase tracking-wider">Submit Supervisor Feedback</h4>
+                      <p className="text-xs text-gray-500 -mt-2 mb-2">Paste your supervisor's requested changes. The AI will rewrite this chapter to reflect the feedback perfectly.</p>
+                      
+                      <textarea
+                        className="w-full border border-gray-200 p-4 bg-gray-50 outline-none text-sm rounded-xl focus:border-black resize-y min-h-[120px]"
+                        placeholder="Type supervisor's comments here..."
+                        value={feedbackText}
+                        onChange={(e) => setFeedbackText(e.target.value)}
+                      />
+                      
+                      <div className="flex flex-col sm:flex-row gap-3 mt-2">
+                        <button disabled={applyingCorrection || !feedbackText} className="flex-1 bg-black text-white px-4 py-3 text-xs font-bold uppercase tracking-widest hover:bg-gray-800 disabled:bg-gray-400 transition-colors rounded-lg shadow-sm">
+                          {applyingCorrection ? "Rewriting Chapter..." : "Apply Corrections"}
+                        </button>
+                        <button onClick={() => setShowFeedbackPanel(false)} className="w-full sm:w-auto bg-red-50 text-red-600 border border-red-200 px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-red-100 transition-colors rounded-lg shadow-sm">
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
