@@ -42,10 +42,12 @@ export default function WorkspaceProgress({
     toggleDrawer(false); 
   };
 
-  const firstUngeneratedIndex = structure.findIndex(c => !generatedChapters.includes(c.key));
+  // 🚨 THE FIX: Tell the indexer to ignore the 'guidelines' key since it's an upload, not generated text
+  const firstUngeneratedIndex = structure.findIndex(
+    (c) => c.key !== "guidelines" && !generatedChapters.includes(c.key)
+  );
 
   return (
-    // 🚨 RESTORED: sticky top-0 with z-[60] ensures it acts as the master header on scroll
     <aside className="w-full md:w-64 flex-shrink-0 flex flex-col sticky top-0 z-[60] md:top-4 md:z-40 self-start">
 
       <div className="md:hidden w-full h-14">
@@ -106,11 +108,11 @@ export default function WorkspaceProgress({
               let isLocked = false;
               if (!guidelinesUploaded && chapter.key !== "guidelines") {
                 isLocked = true;
-              } else if (!isGenerated && index > firstUngeneratedIndex) {
+              // 🚨 THE FIX: Added failsafe `firstUngeneratedIndex !== -1`
+              } else if (!isGenerated && firstUngeneratedIndex !== -1 && index > firstUngeneratedIndex) {
                 isLocked = true;
               }
 
-              // 🚨 RESTORED: Logic to detect if this specific chapter is the very next one ready to be drafted
               const isReadyToGenerate = !isGenerated && !isLocked && !isFree;
 
               return (
@@ -135,7 +137,6 @@ export default function WorkspaceProgress({
                   ) : isFree ? (
                     <span className={`text-[10px] px-1.5 py-0.5 font-bold tracking-wider rounded-sm shrink-0 ${isActive ? 'bg-white border border-blue-200 text-blue-700' : 'bg-blue-100 text-blue-700'}`}>FREE</span>
                   ) : isReadyToGenerate ? (
-                    // 🚨 RESTORED: Renders the GENERATE badge for the active/unlocked step
                     <span className={`text-[10px] px-1.5 py-0.5 font-bold tracking-wider rounded-sm shrink-0 ${isActive ? 'bg-[#d97706] text-white' : 'bg-orange-100 text-[#d97706] border border-orange-200'}`}>GENERATE</span>
                   ) : null}
                 </button>
