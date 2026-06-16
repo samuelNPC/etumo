@@ -51,7 +51,7 @@ function WorkspaceContent() {
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
 
-  // --- SETUP WIZARD STATES (Simplified) ---
+  // --- SETUP WIZARD STATES (Streamlined) ---
   const [course, setCourse] = useState("");
   const [customTopic, setCustomTopic] = useState("");
   const [setupLoading, setSetupLoading] = useState(false);
@@ -298,6 +298,8 @@ function WorkspaceContent() {
           setActiveChapter={setActiveChapter}
           guidelinesUploaded={isGuidelinesUploaded}
           progress={project.progress} 
+          // Extracting the keys of generated content to pass to the sidebar for sequential locking
+          generatedChapters={Object.keys(project?.content || {})}
         />
 
         {/* Dynamic Content Area */}
