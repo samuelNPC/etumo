@@ -1,4 +1,10 @@
 import OriginalityCenter from "@/components/OriginalityCenter";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Originality Center | Etumo",
+  description: "Upload flagged documents to isolate and rewrite problematic text structures.",
+};
 
 export default function OriginalityPage() {
   return (
@@ -7,8 +13,6 @@ export default function OriginalityPage() {
         <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Similarity & AI Remediation</h1>
         <p className="text-gray-500 mt-1 text-sm">Upload flagged documents to isolate and rewrite problematic text structures.</p>
       </div>
-      
-      {/* This mounts the engine component we built earlier */}
       <OriginalityCenter />
     </main>
   );
