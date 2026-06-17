@@ -20,30 +20,44 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     document.addEventListener("contextmenu", handleContextMenu);
     document.addEventListener("keydown", handleKeyDown);
 
-    // Cleanup event listeners when the component unmounts
     return () => {
       document.removeEventListener("contextmenu", handleContextMenu);
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, []);
 
+  // Basic markdown parser for the preview (handles headings and page breaks for Full Doc view)
+  const formatContent = (text: string) => {
+    if (!text) return "Select a chapter from the left panel to load the document...";
+    
+    return text.split('\n').map((line, idx) => {
+      if (line.trim() === "[PAGE BREAK]") {
+        return <div key={idx} className="my-12 border-b-2 border-dashed border-gray-300 w-full relative">
+          <span className="absolute left-1/2 -translate-x-1/2 -top-2.5 bg-white px-4 text-xs font-bold uppercase tracking-widest text-gray-400">Page Break</span>
+        </div>;
+      }
+      if (line.startsWith("### ")) {
+        return <h3 key={idx} className="text-xl font-bold mt-8 mb-4 uppercase tracking-wider">{line.replace("### ", "")}</h3>;
+      }
+      return <p key={idx} className="mb-4">{line}</p>;
+    });
+  };
+
   return (
-    <div className="relative border border-gray-300 p-8 min-h-[600px] bg-white locked-document-viewer overflow-hidden">
+    <div className="relative border-x border-b border-gray-300 p-10 sm:p-16 min-h-[800px] bg-white locked-document-viewer overflow-hidden shadow-sm">
 
       {/* Embedded Security Watermark */}
       <div 
-        // Increased opacity slightly because yellow on white is much harder to see than black
-        className="absolute inset-0 pointer-events-none opacity-[0.25] flex items-center justify-center text-center z-0"
+        className="absolute inset-0 pointer-events-none opacity-[0.15] flex items-center justify-center text-center z-0"
         style={{ 
-          // Replaced text with ETUMO.com, changed font size/weight, and set fill to a bright yellow (%23facc15)
-          backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'350\' height=\'350\'><text x=\'50%\' y=\'50%\' font-family=\'sans-serif\' font-size=\'32\' font-weight=\'900\' fill=\'%23facc15\' text-anchor=\'middle\' transform=\'rotate(-45 175 175)\'>ETOMU.com</text></svg>")',
+          backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'400\' height=\'400\'><text x=\'50%\' y=\'50%\' font-family=\'sans-serif\' font-size=\'36\' font-weight=\'900\' fill=\'%23d97706\' text-anchor=\'middle\' transform=\'rotate(-45 200 200)\'>ETUMO.com</text></svg>")',
           backgroundRepeat: 'repeat'
         }}
       ></div>
 
       {/* The Actual Document Content */}
-      <div className="relative z-10 whitespace-pre-wrap font-serif text-gray-800 text-lg leading-relaxed">
-        {content || "Select a chapter from the left panel to load the document..."}
+      <div className="relative z-10 font-serif text-gray-800 text-[17px] leading-[2] text-justify max-w-3xl mx-auto">
+        {formatContent(content)}
       </div>
 
     </div>
