@@ -2,7 +2,6 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-// Upgraded to Pro model: Perfectly handles massive document contexts and complex table extractions
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
 export async function POST(req: Request) {
@@ -15,23 +14,34 @@ export async function POST(req: Request) {
     }
 
     const mimeType = file.type;
+    if (mimeType !== "application/pdf") {
+      return NextResponse.json({ error: "Please upload a valid Turnitin PDF report." }, { status: 400 });
+    }
+
     const arrayBuffer = await file.arrayBuffer();
     const base64Data = Buffer.from(arrayBuffer).toString("base64");
 
     const prompt = `
-      You are an expert academic editor and document reconstruction AI.
-      I am providing you with a Turnitin Similarity Report PDF.
+      You are an expert document analysis AI. Analyze this uploaded Turnitin Similarity Report PDF.
+      Extract the core originality metrics, student details, and top matching sources.
       
-      YOUR TASK:
-      Reconstruct the entire body of this document from start to finish with the following STRICT RULES:
+      CRITICAL RULES - YOU MUST OBEY THESE STRICTLY:
+      1. Return ONLY a raw JSON object. Do not include any conversational filler, introductory phrases, or markdown formatting.
+      2. The output MUST start with "{" and end with "}".
       
-      1. REWRITE FLAGGED TEXT: Any text that appears to be highlighted/flagged for plagiarism or AI generation must be rewritten. Retain the exact academic meaning and citations, but change the vocabulary and sentence structure to achieve 0% similarity/AI detection.
-      2. PRESERVE CLEAN TEXT: Any text that is standard and unflagged must be output exactly as it is.
-      3. REBUILD TABLES: If you encounter a table, you MUST reconstruct it perfectly using standard Markdown table format (using | and -). Do not write tables as plain text paragraphs.
-      4. STRIP METADATA & ARTIFACTS: Completely ignore and remove page numbers, headers, footers, Turnitin report summaries, and similarity index pages at the end of the document. Only output the actual academic content.
-      5. NO IMAGES: Ignore all images and graphs.
-      6. FORMATTING: Use standard Markdown headings (###) for section titles. Use standard double line breaks for paragraphs.
-      7. NO CONVERSATIONAL FILLER: Do not output "Here is the rewritten document" or any introduction. Your very first word must be the title or first word of the actual document.
+      Expected JSON Format:
+      {
+        "studentName": "Extracted student name (usually near the top or Document Details)",
+        "overallSimilarity": 19,
+        "issues": {
+          "notCited": 0,
+          "missingQuotations": 0
+        },
+        "topSources": [
+          "Source Name 1 X%",
+          "Source Name 2 Y%"
+        ]
+      }
     `;
 
     const result = await model.generateContent([
@@ -39,17 +49,30 @@ export async function POST(req: Request) {
       prompt,
     ]);
 
-    let remediatedText = result.response.text().trim();
-    
-    // Safety Cleanup: Strip out markdown blocks and conversational intro phrases
-    remediatedText = remediatedText.replace(/```(md|markdown)?/gi, "").replace(/
-```/g, "").trim();
-    remediatedText = remediatedText.replace(/^(Here is|Sure|Certainly|I have rewritten).*?\n/i, "").trim();
+    let responseText = result.response.text().trim();
 
-    return NextResponse.json({ success: true, remediatedText }, { status: 200 });
+    // 🚨 BULLETPROOF CLEANUP: Uses `{3}` to avoid literal backticks breaking the build
+    responseText = responseText.replace(/`{3}(json)?/gi, "").replace(/`{3}/g, "").trim();
+    responseText = responseText.replace(/^(Here is|Sure|Certainly|I have).*?\n/i, "").trim();
+
+    const jsonStart = responseText.indexOf('{');
+    const jsonEnd = responseText.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+        responseText = responseText.substring(jsonStart, jsonEnd + 1);
+    }
+
+    let extractedData;
+    try {
+      extractedData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error("Failed to parse JSON. Raw output:", responseText);
+      return NextResponse.json({ error: "Failed to format report correctly. Try again." }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, data: extractedData }, { status: 200 });
 
   } catch (error) {
-    console.error("Error remediating document:", error);
-    return NextResponse.json({ error: "Failed to process the document." }, { status: 500 });
+    console.error("Error parsing Turnitin PDF:", error);
+    return NextResponse.json({ error: "Failed to parse the document. Ensure it is a valid PDF." }, { status: 500 });
   }
 }
