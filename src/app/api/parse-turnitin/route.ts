@@ -20,6 +20,7 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const base64Data = Buffer.from(arrayBuffer).toString("base64");
 
+    // 🚨 ADDED BACK: aiScore and aiFlaggedSections to the extraction schema
     const prompt = `
       You are an expert document analysis AI. Analyze this uploaded Turnitin Similarity Report PDF.
       Extract the core originality metrics, student details, and top matching sources.
@@ -32,6 +33,8 @@ export async function POST(req: Request) {
       {
         "studentName": "Extracted student name (usually near the top or Document Details)",
         "overallSimilarity": 19,
+        "aiScore": 37, 
+        "aiFlaggedSections": 13,
         "issues": {
           "notCited": 0,
           "missingQuotations": 0
@@ -45,7 +48,6 @@ export async function POST(req: Request) {
 
     let result;
     try {
-      // Attempt 1: Try the heavy-duty Pro model
       const proModel = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
       result = await proModel.generateContent([
         { inlineData: { data: base64Data, mimeType } },
@@ -53,8 +55,6 @@ export async function POST(req: Request) {
       ]);
     } catch (apiError: any) {
       console.warn("Pro model overloaded or failed, falling back to Flash...", apiError.message);
-      
-      // Attempt 2: Silent Fallback to the highly available Flash model
       const flashModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       result = await flashModel.generateContent([
         { inlineData: { data: base64Data, mimeType } },
@@ -64,7 +64,6 @@ export async function POST(req: Request) {
 
     let responseText = result.response.text().trim();
 
-    // 🚨 BULLETPROOF CLEANUP
     responseText = responseText.replace(/`{3}(json)?/gi, "").replace(/`{3}/g, "").trim();
     responseText = responseText.replace(/^(Here is|Sure|Certainly|I have).*?\n/i, "").trim();
 
