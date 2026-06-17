@@ -29,12 +29,13 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const base64Data = Buffer.from(arrayBuffer).toString("base64");
 
-    // 🚨 STRICT PROMPT: Count the questions and sections
+    // 🚨 UPDATED PROMPT: Now extracts the full text for the frontend preview
     const prompt = `
       You are an expert academic research assistant. Analyze this uploaded university data collection instrument (questionnaire or interview guide).
       
-      Count the total number of primary questions asked. 
-      Count the total number of distinct sections (e.g., Section A, Section B).
+      1. Count the total number of primary questions asked. 
+      2. Count the total number of distinct sections (e.g., Section A, Section B).
+      3. Extract the entire questionnaire beautifully formatted in standard Markdown.
       
       CRITICAL RULES:
       1. Return ONLY a raw JSON object. Do not include markdown (like \`\`\`json) or conversational text.
@@ -42,7 +43,8 @@ export async function POST(req: Request) {
       Expected JSON Format:
       {
         "questionCount": 14,
-        "sectionCount": 3
+        "sectionCount": 3,
+        "previewText": "### SECTION A: DEMOGRAPHICS\\n\\n1. What is your age?\\n2. What is your gender?"
       }
     `;
 
@@ -53,7 +55,7 @@ export async function POST(req: Request) {
 
     let responseText = result.response.text().trim();
 
-    // 🚨 BULLETPROOF CLEANUP: Uses `{3}` to avoid literal backticks breaking the Vercel build
+    // 🚨 BULLETPROOF CLEANUP
     responseText = responseText.replace(/`{3}(json)?/gi, "").replace(/`{3}/g, "").trim();
     responseText = responseText.replace(/^(Here is|Sure|Certainly|I have).*?\n/i, "").trim();
 
@@ -70,6 +72,7 @@ export async function POST(req: Request) {
       status: "pending_payment",
       questionCount: extractedData.questionCount || 0,
       sectionCount: extractedData.sectionCount || 0,
+      previewText: extractedData.previewText || "",
       createdAt: new Date().toISOString()
     });
 
