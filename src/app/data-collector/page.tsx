@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import LockedDocumentViewer from "@/components/LockedDocumentViewer";
 
 interface AnalysisData {
   questionCount: number;
   sectionCount: number;
   instrumentId: string;
+  previewText: string; // 🚨 Added to hold the extracted text
 }
 
 export default function DataCollectorPage() {
@@ -15,7 +17,8 @@ export default function DataCollectorPage() {
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
-  // Holds the dynamic data returned by the AI backend
+  // Controls the edge-to-edge document preview
+  const [showPreview, setShowPreview] = useState(false);
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
 
   const handleAnalyze = async () => {
@@ -27,7 +30,6 @@ export default function DataCollectorPage() {
     formData.append("file", selectedFile);
 
     try {
-      // Send to the real backend
       const res = await fetch("/api/parse-instrument", {
         method: "POST",
         body: formData,
@@ -39,13 +41,13 @@ export default function DataCollectorPage() {
         throw new Error(data.error || "Failed to analyze document.");
       }
 
-      // Save the AI's findings and the unique database ID
       setAnalysisData({
         questionCount: data.questionCount,
         sectionCount: data.sectionCount,
-        instrumentId: data.instrumentId
+        instrumentId: data.instrumentId,
+        previewText: data.previewText || "No text extracted."
       });
-      
+
       setStep("checkout");
     } catch (error: any) {
       setErrorMessage(error.message);
@@ -54,15 +56,13 @@ export default function DataCollectorPage() {
   };
 
   const handlePayment = () => {
-    // FAKE PAYMENT LOGIC FOR MASSIVE TESTING
-    // In production, this will trigger the MTN/Airtel API
-    alert("DEVELOPER MODE: Simulating a successful 10,000 UGX Mobile Money payment...");
+    const isPaid = window.confirm("Redirecting to Mobile Money checkout for 10,000 UGX. Click OK to simulate successful payment.");
+    if (!isPaid) return;
     
-    // Immediately move to success
+    setShowPreview(false); // Close preview if open
     setStep("success");
   };
 
-  // 🚨 FIX: Changed substring to (0, 4) to make the URL super short!
   const finalLink = `etumo.ug/collect/${analysisData?.instrumentId?.substring(0, 4) || "demo"}`;
 
   const handleCopyLink = () => {
@@ -89,7 +89,7 @@ export default function DataCollectorPage() {
             Research Instrument <br /> Digitization
           </h1>
           <p className="text-gray-500 mt-3 text-sm sm:text-base leading-relaxed">
-            Stop printing paper questionnaires. Upload your approved document, and the Etumo Engine will convert it into a digital collection link for 10,000 UGX.
+            Stop printing paper questionnaires. Upload your approved document, and the Etumo Engine will convert it into a digital collection link.
           </p>
         </div>
 
@@ -160,19 +160,29 @@ export default function DataCollectorPage() {
               </div>
             </div>
 
-            <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl">
-              <p className="text-sm text-gray-700 font-medium leading-relaxed">
-                Unlock your digital collection link. As respondents submit answers on their phones, the Etumo Engine will automatically generate your Chapter 4 Data Presentation graphs.
-              </p>
+            <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl">
+              <h4 className="text-sm font-bold text-gray-900 uppercase tracking-widest mb-3">Deployment Package Includes:</h4>
+              <ul className="space-y-2">
+                <li className="flex items-center gap-2 text-sm text-gray-700 font-medium"><span className="text-blue-600">✓</span> Instant Mobile Collection Link</li>
+                <li className="flex items-center gap-2 text-sm text-gray-700 font-medium"><span className="text-blue-600">✓</span> Live Link Analytics & Tracking</li>
+                <li className="flex items-center gap-2 text-sm text-gray-700 font-medium"><span className="text-blue-600">✓</span> Automated AI Summary of Responses</li>
+              </ul>
             </div>
 
-            <button 
-              onClick={handlePayment}
-              className="w-full bg-[#d97706] text-white font-extrabold py-4 rounded-xl uppercase text-sm tracking-widest hover:bg-[#b45309] transition-all shadow-lg hover:-translate-y-1"
-            >
-              Generate Link (10,000 UGX)
-            </button>
-            <p className="text-center text-xs text-gray-400 font-medium">Payment is currently in Developer Test Mode (Free)</p>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button 
+                onClick={() => setShowPreview(true)}
+                className="flex-1 bg-white text-gray-900 border-2 border-black font-extrabold py-4 rounded-xl uppercase text-xs tracking-widest hover:bg-gray-50 transition-all shadow-sm"
+              >
+                Preview Document
+              </button>
+              <button 
+                onClick={handlePayment}
+                className="flex-1 bg-[#d97706] text-white font-extrabold py-4 rounded-xl uppercase text-xs tracking-widest hover:bg-[#b45309] transition-all shadow-lg hover:-translate-y-1"
+              >
+                Deploy Link (10,000 UGX)
+              </button>
+            </div>
           </div>
         )}
 
@@ -204,18 +214,36 @@ export default function DataCollectorPage() {
           </div>
         )}
 
-        {/* Info Footer */}
-        <div className="mt-8 pt-8 border-t border-gray-100 flex gap-4 items-start">
-          <div className="shrink-0 w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+      </div>
+
+      {/* 🚨 EDGE-TO-EDGE PREVIEW MODAL */}
+      {showPreview && analysisData && (
+        <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 bg-gray-50 shrink-0 shadow-sm z-10">
+            <button 
+              onClick={handlePayment}
+              className="bg-[#d97706] text-white px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-[#b45309] transition-colors shadow-sm"
+            >
+              Deploy Link (10,000 UGX)
+            </button>
+            <button 
+              onClick={() => setShowPreview(false)}
+              className="text-xs font-bold text-gray-500 hover:text-red-600 uppercase tracking-widest transition-colors flex items-center gap-2 px-2 py-2"
+            >
+              Close Preview ✕
+            </button>
           </div>
-          <div>
-            <h4 className="text-sm font-bold text-gray-900">How it works</h4>
-            <p className="text-xs text-gray-500 leading-relaxed mt-1">Our AI extracts your questions and provisions a secure database. Instead of printing papers, share the mobile-friendly link on WhatsApp to collect responses instantly.</p>
+
+          <div className="flex-1 overflow-y-auto bg-gray-100">
+            <div className="max-w-4xl mx-auto w-full min-h-full flex flex-col shadow-2xl my-8">
+              <div className="flex-1 p-0">
+                <LockedDocumentViewer content={analysisData.previewText} />
+              </div>
+            </div>
           </div>
         </div>
+      )}
 
-      </div>
     </div>
   );
 }
