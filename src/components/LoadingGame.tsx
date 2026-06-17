@@ -22,7 +22,14 @@ interface Card {
   emoji: string;
 }
 
-export default function LoadingGame({ featureName }: { featureName: string }) {
+interface LoadingGameProps {
+  featureName: string;
+  isComplete: boolean;
+  onDownloadNow: () => void;
+  onDownloadLater: () => void;
+}
+
+export default function LoadingGame({ featureName, isComplete, onDownloadNow, onDownloadLater }: LoadingGameProps) {
   const [messageIndex, setMessageIndex] = useState(0);
   const [progress, setProgress] = useState(0);
 
@@ -33,8 +40,13 @@ export default function LoadingGame({ featureName }: { featureName: string }) {
   const [isBoardLocked, setIsBoardLocked] = useState(false);
   const [moves, setMoves] = useState(0);
 
-  // 1. Handle Progress Bar & Messages
+  // Handle Progress Bar & Messages
   useEffect(() => {
+    if (isComplete) {
+      setProgress(100);
+      return;
+    }
+
     const messageInterval = setInterval(() => {
       setMessageIndex((prev) => (prev < STATUS_MESSAGES.length - 1 ? prev + 1 : prev));
     }, 5000); 
@@ -52,9 +64,9 @@ export default function LoadingGame({ featureName }: { featureName: string }) {
       clearInterval(messageInterval);
       clearInterval(progressInterval);
     };
-  }, []);
+  }, [isComplete]);
 
-  // 2. Initialize Memory Game
+  // Initialize Memory Game
   const initializeGame = () => {
     const shuffledCards = [...FRUIT_EMOJIS, ...FRUIT_EMOJIS]
       .sort(() => Math.random() - 0.5)
@@ -67,12 +79,11 @@ export default function LoadingGame({ featureName }: { featureName: string }) {
     setIsBoardLocked(false);
   };
 
-  // Run once on mount
   useEffect(() => {
     initializeGame();
   }, []);
 
-  // 3. Handle Card Matching Logic
+  // Handle Card Matching
   useEffect(() => {
     if (flippedIndices.length === 2) {
       setIsBoardLocked(true);
@@ -81,12 +92,10 @@ export default function LoadingGame({ featureName }: { featureName: string }) {
       const [firstIndex, secondIndex] = flippedIndices;
 
       if (cards[firstIndex].emoji === cards[secondIndex].emoji) {
-        // Match found
         setSolvedIndices((prev) => [...prev, firstIndex, secondIndex]);
         setFlippedIndices([]);
         setIsBoardLocked(false);
       } else {
-        // No match, flip back after a short delay
         const timer = setTimeout(() => {
           setFlippedIndices([]);
           setIsBoardLocked(false);
@@ -97,10 +106,7 @@ export default function LoadingGame({ featureName }: { featureName: string }) {
   }, [flippedIndices, cards]);
 
   const handleCardClick = (index: number) => {
-    // Prevent clicking if board is locked, card is already flipped, or card is already solved
-    if (isBoardLocked || flippedIndices.includes(index) || solvedIndices.includes(index)) {
-      return;
-    }
+    if (isBoardLocked || flippedIndices.includes(index) || solvedIndices.includes(index)) return;
     setFlippedIndices((prev) => [...prev, index]);
   };
 
@@ -108,25 +114,59 @@ export default function LoadingGame({ featureName }: { featureName: string }) {
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-gray-900 bg-opacity-95 p-4 backdrop-blur-md animate-in fade-in duration-500">
-      <div className="max-w-md w-full bg-white p-8 shadow-2xl relative text-center border-t-4 border-[#d97706]">
+      <div className="max-w-md w-full bg-white p-8 shadow-2xl relative text-center border-t-4 border-[#d97706] overflow-hidden">
         
+        {/* 🚨 THE SUCCESS POPUP OVERLAY */}
+        {isComplete && (
+          <div className="absolute inset-0 z-50 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center p-8 animate-in slide-in-from-bottom-4 duration-500">
+            <button 
+              onClick={onDownloadLater} 
+              className="absolute top-4 right-4 text-gray-400 hover:text-black font-bold p-2 text-xl transition-colors"
+              title="Close and download later"
+            >
+              ✕
+            </button>
+            
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6 border-4 border-white shadow-sm">
+              <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            
+            <h3 className="text-2xl font-black text-gray-900 uppercase tracking-tighter mb-2">Document Ready</h3>
+            <p className="text-sm text-gray-500 mb-8 font-medium">Your compiled Microsoft Word document is ready to be saved.</p>
+            
+            <div className="flex flex-col gap-3 w-full">
+              <button 
+                onClick={onDownloadNow} 
+                className="w-full bg-black text-white py-4 uppercase text-xs font-bold tracking-widest hover:bg-gray-800 transition-colors shadow-md"
+              >
+                Download Now
+              </button>
+              <button 
+                onClick={onDownloadLater} 
+                className="w-full bg-gray-100 text-gray-700 py-4 uppercase text-xs font-bold tracking-widest hover:bg-gray-200 transition-colors"
+              >
+                Download Later
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Loading Header */}
         <h2 className="text-xl font-black text-gray-900 uppercase tracking-widest mb-1 animate-pulse">
-          Processing Document
+          {isComplete ? "Process Complete" : "Processing Document"}
         </h2>
         <p className="text-sm font-bold text-[#d97706] mb-6">{featureName}</p>
 
         {/* Progress Bar */}
         <div className="w-full bg-gray-200 h-2 mb-3 overflow-hidden">
-          <div 
-            className="bg-black h-full transition-all duration-1000 ease-out" 
-            style={{ width: `${progress}%` }}
-          ></div>
+          <div className="bg-black h-full transition-all duration-1000 ease-out" style={{ width: `${progress}%` }}></div>
         </div>
         
         {/* Dynamic Status Text */}
         <p className="text-xs text-gray-500 font-mono h-4 mb-8">
-          > {STATUS_MESSAGES[messageIndex]}
+          > {isComplete ? "Done." : STATUS_MESSAGES[messageIndex]}
         </p>
 
         {/* The Memory Matching Game */}
@@ -141,7 +181,6 @@ export default function LoadingGame({ featureName }: { featureName: string }) {
             </span>
           </div>
           
-          {/* Card Grid */}
           <div className="grid grid-cols-4 gap-2 w-full max-w-[240px] mx-auto mb-4 relative">
             {cards.map((card, index) => {
               const isFlipped = flippedIndices.includes(index) || solvedIndices.includes(index);
@@ -156,25 +195,16 @@ export default function LoadingGame({ featureName }: { featureName: string }) {
                     ${solvedIndices.includes(index) ? 'opacity-50 grayscale' : ''}
                   `}
                 >
-                  {/* If flipped, show emoji. If not, show a subtle pattern/icon */}
-                  {isFlipped ? (
-                    <span className="animate-in zoom-in duration-200">{card.emoji}</span>
-                  ) : (
-                    <span className="text-gray-600 text-sm">?</span>
-                  )}
+                  {isFlipped ? <span className="animate-in zoom-in duration-200">{card.emoji}</span> : <span className="text-gray-600 text-sm">?</span>}
                 </button>
               );
             })}
 
-            {/* Win State Overlay */}
             {isGameWon && (
               <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center z-10 animate-in zoom-in duration-300 rounded-md border border-green-200">
                 <span className="text-3xl mb-2">🎉</span>
                 <span className="text-sm font-bold text-gray-900 uppercase tracking-widest mb-3">You Won!</span>
-                <button 
-                  onClick={initializeGame} 
-                  className="text-xs bg-[#d97706] text-white px-4 py-2 uppercase font-bold tracking-wider hover:bg-[#b45309] transition-colors rounded shadow-sm"
-                >
+                <button onClick={initializeGame} className="text-xs bg-[#d97706] text-white px-4 py-2 uppercase font-bold tracking-wider hover:bg-[#b45309] transition-colors rounded shadow-sm">
                   Play Again
                 </button>
               </div>
@@ -182,9 +212,6 @@ export default function LoadingGame({ featureName }: { featureName: string }) {
           </div>
         </div>
 
-        <p className="text-[10px] text-gray-400 mt-6 uppercase tracking-widest font-bold">
-          Please do not close this window
-        </p>
       </div>
     </div>
   );
