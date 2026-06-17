@@ -15,24 +15,32 @@ const STATUS_MESSAGES = [
   "Finalizing your clean document..."
 ];
 
+const FRUIT_EMOJIS = ["🍎", "🍌", "🍉", "🍇", "🍓", "🍒", "🍍", "🥝"];
+
+interface Card {
+  id: number;
+  emoji: string;
+}
+
 export default function LoadingGame({ featureName }: { featureName: string }) {
   const [messageIndex, setMessageIndex] = useState(0);
   const [progress, setProgress] = useState(0);
 
-  // Tic Tac Toe State
-  const [board, setBoard] = useState<(string | null)[]>(Array(9).fill(null));
-  const [isPlayerTurn, setIsPlayerTurn] = useState(true);
-  const [winner, setWinner] = useState<string | null>(null);
+  // Memory Game State
+  const [cards, setCards] = useState<Card[]>([]);
+  const [flippedIndices, setFlippedIndices] = useState<number[]>([]);
+  const [solvedIndices, setSolvedIndices] = useState<number[]>([]);
+  const [isBoardLocked, setIsBoardLocked] = useState(false);
+  const [moves, setMoves] = useState(0);
 
   // 1. Handle Progress Bar & Messages
   useEffect(() => {
     const messageInterval = setInterval(() => {
       setMessageIndex((prev) => (prev < STATUS_MESSAGES.length - 1 ? prev + 1 : prev));
-    }, 5000); // Change message every 5 seconds
+    }, 5000); 
 
     const progressInterval = setInterval(() => {
       setProgress((prev) => {
-        // Slow down the progress bar as it gets closer to 95% to wait for the actual API
         if (prev < 50) return prev + 2;
         if (prev < 80) return prev + 1;
         if (prev < 95) return prev + 0.5;
@@ -46,61 +54,57 @@ export default function LoadingGame({ featureName }: { featureName: string }) {
     };
   }, []);
 
-  // 2. Tic Tac Toe Logic
-  const checkWinner = (squares: (string | null)[]) => {
-    const lines = [
-      [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
-      [0, 3, 6], [1, 4, 7], [2, 5, 8], // cols
-      [0, 4, 8], [2, 4, 6]             // diagonals
-    ];
-    for (let i = 0; i < lines.length; i++) {
-      const [a, b, c] = lines[i];
-      if (squares[a] && squares[a] === squares[b] && squares[a] === squares[c]) {
-        return squares[a];
+  // 2. Initialize Memory Game
+  const initializeGame = () => {
+    const shuffledCards = [...FRUIT_EMOJIS, ...FRUIT_EMOJIS]
+      .sort(() => Math.random() - 0.5)
+      .map((emoji, index) => ({ id: index, emoji }));
+    
+    setCards(shuffledCards);
+    setFlippedIndices([]);
+    setSolvedIndices([]);
+    setMoves(0);
+    setIsBoardLocked(false);
+  };
+
+  // Run once on mount
+  useEffect(() => {
+    initializeGame();
+  }, []);
+
+  // 3. Handle Card Matching Logic
+  useEffect(() => {
+    if (flippedIndices.length === 2) {
+      setIsBoardLocked(true);
+      setMoves((m) => m + 1);
+
+      const [firstIndex, secondIndex] = flippedIndices;
+
+      if (cards[firstIndex].emoji === cards[secondIndex].emoji) {
+        // Match found
+        setSolvedIndices((prev) => [...prev, firstIndex, secondIndex]);
+        setFlippedIndices([]);
+        setIsBoardLocked(false);
+      } else {
+        // No match, flip back after a short delay
+        const timer = setTimeout(() => {
+          setFlippedIndices([]);
+          setIsBoardLocked(false);
+        }, 800);
+        return () => clearTimeout(timer);
       }
     }
-    if (!squares.includes(null)) return "Draw";
-    return null;
-  };
+  }, [flippedIndices, cards]);
 
-  const handlePlayerMove = (index: number) => {
-    if (board[index] || winner || !isPlayerTurn) return;
-
-    const newBoard = [...board];
-    newBoard[index] = "X";
-    setBoard(newBoard);
-    setIsPlayerTurn(false);
-
-    const win = checkWinner(newBoard);
-    if (win) setWinner(win);
-  };
-
-  // AI Opponent Move
-  useEffect(() => {
-    if (!isPlayerTurn && !winner) {
-      const timer = setTimeout(() => {
-        const availableSpots = board.map((val, idx) => (val === null ? idx : null)).filter((val) => val !== null) as number[];
-        
-        if (availableSpots.length > 0) {
-          const randomSpot = availableSpots[Math.floor(Math.random() * availableSpots.length)];
-          const newBoard = [...board];
-          newBoard[randomSpot] = "O";
-          setBoard(newBoard);
-          
-          const win = checkWinner(newBoard);
-          if (win) setWinner(win);
-        }
-        setIsPlayerTurn(true);
-      }, 600); // AI takes 600ms to "think"
-      return () => clearTimeout(timer);
+  const handleCardClick = (index: number) => {
+    // Prevent clicking if board is locked, card is already flipped, or card is already solved
+    if (isBoardLocked || flippedIndices.includes(index) || solvedIndices.includes(index)) {
+      return;
     }
-  }, [isPlayerTurn, board, winner]);
-
-  const resetGame = () => {
-    setBoard(Array(9).fill(null));
-    setWinner(null);
-    setIsPlayerTurn(true);
+    setFlippedIndices((prev) => [...prev, index]);
   };
+
+  const isGameWon = solvedIndices.length === 16 && cards.length > 0;
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-gray-900 bg-opacity-95 p-4 backdrop-blur-md animate-in fade-in duration-500">
@@ -121,47 +125,64 @@ export default function LoadingGame({ featureName }: { featureName: string }) {
         </div>
         
         {/* Dynamic Status Text */}
-        <p className="text-xs text-gray-500 font-mono h-4 mb-10">
+        <p className="text-xs text-gray-500 font-mono h-4 mb-8">
           > {STATUS_MESSAGES[messageIndex]}
         </p>
 
-        {/* The Mini Game */}
-        <div className="bg-gray-50 border border-gray-200 p-6">
-          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest mb-1">Pass the Time</h3>
-          <p className="text-xs text-gray-500 mb-6">Play Tic-Tac-Toe against the AI while you wait.</p>
-          
-          <div className="grid grid-cols-3 gap-2 w-48 mx-auto mb-4">
-            {board.map((cell, idx) => (
-              <button
-                key={idx}
-                onClick={() => handlePlayerMove(idx)}
-                disabled={!!cell || !!winner || !isPlayerTurn}
-                className="w-14 h-14 bg-white border-2 border-gray-300 flex items-center justify-center text-2xl font-black hover:bg-gray-100 transition-colors disabled:opacity-100"
-              >
-                <span className={cell === "X" ? "text-black" : "text-[#d97706]"}>{cell}</span>
-              </button>
-            ))}
+        {/* The Memory Matching Game */}
+        <div className="bg-gray-50 border border-gray-200 p-6 rounded-lg shadow-inner">
+          <div className="flex justify-between items-end mb-4">
+            <div className="text-left">
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest mb-0.5">Focus Test</h3>
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider">Match the fruits while you wait</p>
+            </div>
+            <span className="text-xs font-bold text-gray-400 bg-gray-200 px-2 py-1 rounded">
+              Moves: {moves}
+            </span>
           </div>
+          
+          {/* Card Grid */}
+          <div className="grid grid-cols-4 gap-2 w-full max-w-[240px] mx-auto mb-4 relative">
+            {cards.map((card, index) => {
+              const isFlipped = flippedIndices.includes(index) || solvedIndices.includes(index);
+              return (
+                <button
+                  key={card.id}
+                  onClick={() => handleCardClick(index)}
+                  disabled={isBoardLocked || isFlipped}
+                  className={`
+                    h-14 flex items-center justify-center text-2xl rounded-md transition-all duration-300 transform preserve-3d
+                    ${isFlipped ? 'bg-white border-2 border-gray-300 rotate-y-180' : 'bg-gray-800 border-b-4 border-gray-900 hover:bg-gray-700 hover:-translate-y-0.5'}
+                    ${solvedIndices.includes(index) ? 'opacity-50 grayscale' : ''}
+                  `}
+                >
+                  {/* If flipped, show emoji. If not, show a subtle pattern/icon */}
+                  {isFlipped ? (
+                    <span className="animate-in zoom-in duration-200">{card.emoji}</span>
+                  ) : (
+                    <span className="text-gray-600 text-sm">?</span>
+                  )}
+                </button>
+              );
+            })}
 
-          <div className="h-6">
-            {winner ? (
-              <div className="flex items-center justify-center gap-3 animate-in zoom-in">
-                <span className="text-sm font-bold text-gray-900">
-                  {winner === "Draw" ? "It's a Draw!" : winner === "X" ? "You Won!" : "AI Wins!"}
-                </span>
-                <button onClick={resetGame} className="text-xs bg-black text-white px-3 py-1 uppercase font-bold hover:bg-gray-800">
+            {/* Win State Overlay */}
+            {isGameWon && (
+              <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center z-10 animate-in zoom-in duration-300 rounded-md border border-green-200">
+                <span className="text-3xl mb-2">🎉</span>
+                <span className="text-sm font-bold text-gray-900 uppercase tracking-widest mb-3">You Won!</span>
+                <button 
+                  onClick={initializeGame} 
+                  className="text-xs bg-[#d97706] text-white px-4 py-2 uppercase font-bold tracking-wider hover:bg-[#b45309] transition-colors rounded shadow-sm"
+                >
                   Play Again
                 </button>
               </div>
-            ) : (
-              <span className="text-xs font-medium text-gray-500">
-                {isPlayerTurn ? "Your turn (X)" : "AI is thinking (O)..."}
-              </span>
             )}
           </div>
         </div>
 
-        <p className="text-[10px] text-gray-400 mt-6 uppercase tracking-widest">
+        <p className="text-[10px] text-gray-400 mt-6 uppercase tracking-widest font-bold">
           Please do not close this window
         </p>
       </div>
