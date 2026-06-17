@@ -13,48 +13,13 @@ export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  
-  const [isVisible, setIsVisible] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
 
-  const [isWorkspaceDrawerOpen, setIsWorkspaceDrawerOpen] = useState(false);
-
-  const isWorkspace = pathname === "/workspace";
-
-  useEffect(() => {
-    const handleDrawerEvent = (e: Event) => {
-      const customEvent = e as CustomEvent;
-      setIsWorkspaceDrawerOpen(customEvent.detail.isOpen);
-    };
-
-    window.addEventListener("etomu-workspace-drawer", handleDrawerEvent);
-    return () => window.removeEventListener("etomu-workspace-drawer", handleDrawerEvent);
-  }, []);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      if (!isWorkspace) {
-        setIsVisible(true);
-        return;
-      }
-
-      const currentScrollY = window.scrollY;
-      if (currentScrollY > lastScrollY && currentScrollY > 60) {
-        setIsVisible(false);
-      } else {
-        setIsVisible(true);
-      }
-      setLastScrollY(currentScrollY);
-    };
-
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [lastScrollY, isWorkspace]);
-
+  // Close mobile menu on route change
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [pathname]);
 
+  // Lock body scroll when mobile menu is open
   useEffect(() => {
     if (isMobileMenuOpen) {
       document.body.style.overflow = "hidden";
@@ -63,6 +28,7 @@ export default function Header() {
     }
   }, [isMobileMenuOpen]);
 
+  // Track Auth state
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -114,9 +80,7 @@ export default function Header() {
 
   return (
     <>
-      <header className={`fixed top-0 left-0 right-0 z-40 w-full border-b border-gray-200 bg-white/95 backdrop-blur-sm transition-transform duration-300 ease-in-out ${
-        isWorkspaceDrawerOpen || !isVisible ? "-translate-y-full" : "translate-y-0"
-      }`}>
+      <header className="fixed top-0 left-0 right-0 z-40 w-full border-b border-gray-200 bg-white/95 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto flex h-16 items-center justify-between px-4 sm:px-8">
 
           <BrandLogo />
@@ -124,13 +88,13 @@ export default function Header() {
           <nav className="hidden md:flex gap-8 items-center">
             <Link href="/" className={`text-sm transition-colors ${isActive("/") ? "text-black font-bold" : "text-gray-600 font-semibold hover:text-black"}`}>Home</Link>
             <Link href="/dashboard" className={`text-sm transition-colors ${isActive("/dashboard") ? "text-black font-bold" : "text-gray-600 font-semibold hover:text-black"}`}>My Projects</Link>
-            
+
             <div className="relative group py-4">
               <button className={`flex items-center gap-1 text-sm transition-colors ${isActive("/originality") || isActive("/data-collector") ? "text-black font-bold" : "text-gray-600 font-semibold hover:text-black"}`}>
                 Research Tools
                 <svg className="w-4 h-4 transition-transform group-hover:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
               </button>
-              
+
               <div className="absolute top-12 left-0 w-48 bg-white border border-gray-100 shadow-xl rounded-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 overflow-hidden">
                 <Link href="/originality" className={`block px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${isActive("/originality") ? "text-black font-bold bg-gray-50" : "text-gray-700"}`}>Originality Center</Link>
                 <Link href="/data-collector" className={`block px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${isActive("/data-collector") ? "text-[#d97706] font-bold bg-orange-50/50" : "text-gray-700"}`}>Data Collector</Link>
@@ -168,8 +132,8 @@ export default function Header() {
         </div>
       </header>
 
-      {/* 🚨 FIX: Hides the ghost space entirely when the drawer opens! */}
-      <div className={`h-16 w-full ${isWorkspaceDrawerOpen ? "hidden" : "block"}`} aria-hidden="true" />
+      {/* Static spacer to prevent content from hiding behind the fixed header */}
+      <div className="h-16 w-full" aria-hidden="true" />
 
       {isMobileMenuOpen && (
         <div 
