@@ -10,7 +10,7 @@ interface GuidelineUploaderProps {
 export default function GuidelineUploader({ projectId, onComplete }: GuidelineUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false); // Added success state
+  const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleUpload = async (e: React.FormEvent) => {
@@ -20,7 +20,7 @@ export default function GuidelineUploader({ projectId, onComplete }: GuidelineUp
     setLoading(true);
     setErrorMsg(null);
     setSuccess(false);
-    
+
     const formData = new FormData();
     formData.append("file", file);
     formData.append("projectId", projectId);
@@ -34,7 +34,6 @@ export default function GuidelineUploader({ projectId, onComplete }: GuidelineUp
       const data = await res.json();
       if (data.success) {
         setSuccess(true);
-        // Wait 1.5 seconds so the user sees the success message, then transition
         setTimeout(() => {
           onComplete();
         }, 1500);
@@ -44,12 +43,12 @@ export default function GuidelineUploader({ projectId, onComplete }: GuidelineUp
     } catch (error) {
       setErrorMsg("Network error processing document. Please check your connection.");
     } finally {
-      if (!data?.success) setLoading(false); // Only stop loading if it failed
+      if (!data?.success) setLoading(false); 
     }
   };
 
   return (
-    <div className="border border-gray-200 bg-white p-6 sm:p-8 rounded-xl shadow-sm mb-6">
+    <div className="border border-gray-200 bg-white p-6 sm:p-8 rounded-xl shadow-sm mb-6 w-full max-w-xl mx-auto">
       <div className="mb-6 border-b border-gray-100 pb-4">
         <h2 className="text-xl font-bold tracking-tight text-gray-900">Configure Institutional Guidelines</h2>
         <p className="text-sm text-gray-500 mt-1">
@@ -64,7 +63,6 @@ export default function GuidelineUploader({ projectId, onComplete }: GuidelineUp
       )}
 
       <form onSubmit={handleUpload} className="flex flex-col gap-5">
-        
         <div className={`border-2 border-dashed p-8 text-center rounded-xl transition-all cursor-pointer relative ${
           file ? "border-black bg-gray-50" : "border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400"
         }`}>
