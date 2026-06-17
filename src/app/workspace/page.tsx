@@ -162,8 +162,8 @@ function WorkspaceContent() {
       const data = await res.json();
       if (data.chapterContent) {
         
-        // 🚨 STRICT REGEX CLEANUP: Remove all asterisks used for bolding
-        const cleanContent = data.chapterContent.replace(/\*\*/g, "");
+        // 🚨 STRICT REGEX CLEANUP: Remove ALL asterisks (Markdown bolding & bullet points) to enforce clean academic paragraphs
+        const cleanContent = data.chapterContent.replace(/\*/g, "");
 
         setProject((prev) => {
           if (!prev) return null;
