@@ -6,21 +6,8 @@ import { doc, getDoc } from "firebase/firestore";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { projectId, chapterKey, isFullDocument, structure } = body;
-
-    if (!projectId || !chapterKey || !structure) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-    }
-
-    const docRef = doc(db, "projects", projectId);
-    const docSnap = await getDoc(docRef);
-
-    if (!docSnap.exists()) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
-    }
-
-    const data = docSnap.data();
-    const contentData = data.content || {};
+    // 🚨 ADDED: rawText and rawTitle for the Originality Center bypass
+    const { projectId, chapterKey, isFullDocument, structure, rawText, rawTitle } = body;
 
     // Elements can now be either Paragraphs OR Native Word Tables
     const docChildren: (docx.Paragraph | docx.Table)[] = [];
@@ -56,7 +43,7 @@ export async function POST(req: Request) {
     const processTextToElements = (text: string) => {
       const lines = text.split("\n");
       const elements: (docx.Paragraph | docx.Table)[] = [];
-      
+
       let inTable = false;
       let tableRowsData: string[][] = [];
 
@@ -85,7 +72,7 @@ export async function POST(req: Request) {
               });
             })
           });
-          
+
           elements.push(table);
           // Add a buffer paragraph after the table
           elements.push(new docx.Paragraph({ text: "", spacing: { after: 200 } }));
@@ -144,7 +131,7 @@ export async function POST(req: Request) {
         if (headerMatch) {
           const level = headerMatch[1].length;
           const contentText = headerMatch[2].replace(/\*/g, ""); 
-          
+
           let headingLevel;
           switch(level) {
               case 1: headingLevel = docx.HeadingLevel.HEADING_1; break;
@@ -193,6 +180,52 @@ export async function POST(req: Request) {
       return elements;
     };
 
+    // 🚨 NEW: Originality Center Bypass. If rawText exists, compile it directly!
+    if (rawText) {
+      if (rawTitle) {
+        docChildren.push(
+          new docx.Paragraph({
+            children: [new docx.TextRun({ text: rawTitle.toUpperCase(), bold: true, size: 32, font: "Times New Roman" })],
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { after: 800 },
+          })
+        );
+      }
+      
+      const elements = processTextToElements(rawText);
+      docChildren.push(...elements);
+
+      const document = new docx.Document({
+        creator: "Etumo Engine",
+        title: rawTitle || "Remediated Document",
+        sections: [{ properties: {}, children: docChildren }],
+      });
+
+      const buffer = await docx.Packer.toBuffer(document);
+      return new NextResponse(buffer, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "Content-Disposition": `attachment; filename="Remediated_Document.docx"`,
+        },
+      });
+    }
+
+    // --- EXISTING WORKSPACE LOGIC ---
+    if (!projectId || !chapterKey || !structure) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    const docRef = doc(db, "projects", projectId);
+    const docSnap = await getDoc(docRef);
+
+    if (!docSnap.exists()) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    const data = docSnap.data();
+    const contentData = data.content || {};
+
     if (isFullDocument) {
       // Add the overarching Master Title for the entire document
       docChildren.push(
@@ -207,7 +240,7 @@ export async function POST(req: Request) {
         if (chapter.key === "guidelines") return;
 
         const chapterText = contentData[chapter.key];
-        
+
         if (chapterText) {
           // Add a Page Break before every chapter (except the very first one)
           if (index > 1) { 
@@ -221,7 +254,7 @@ export async function POST(req: Request) {
 
     } else {
       const singleChapterText = contentData[chapterKey];
-      
+
       if (!singleChapterText) {
         return NextResponse.json({ error: "Chapter content not found" }, { status: 404 });
       }
