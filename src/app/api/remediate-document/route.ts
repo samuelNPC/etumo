@@ -7,13 +7,12 @@ export async function POST(req: Request) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File;
-    const type = formData.get("type") as string; // "ai_bypass" or "plagiarism_bypass"
+    const type = formData.get("type") as string;
 
     if (!file) {
       return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
     }
 
-    // Set temperature: AI bypass needs unpredictability (0.85). Plagiarism needs strict accuracy (0.4).
     const temperature = type === "ai_bypass" ? 0.85 : 0.4;
     const model = genAI.getGenerativeModel({ 
       model: "gemini-2.5-pro",
@@ -64,10 +63,8 @@ export async function POST(req: Request) {
 
     let remediatedText = result.response.text().trim();
     
-    // 🚨 SAFETY CLEANUP: Safely strips out markdown blocks using RegExp to prevent Vercel build errors
-    remediatedText = remediatedText.replace(new RegExp("```(md|markdown)?", "gi"), "");
-    remediatedText = remediatedText.replace(new RegExp("
-```", "g"), "").trim();
+    // 🚨 BULLETPROOF CLEANUP: Uses `{3}` to avoid literal backticks breaking the build
+    remediatedText = remediatedText.replace(/`{3}(md|markdown)?/gi, "").replace(/`{3}/g, "").trim();
     remediatedText = remediatedText.replace(/^(Here is|Sure|Certainly|I have rewritten).*?\n/i, "").trim();
 
     return NextResponse.json({ success: true, remediatedText }, { status: 200 });
