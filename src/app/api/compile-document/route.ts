@@ -22,27 +22,127 @@ export async function POST(req: Request) {
     const data = docSnap.data();
     const contentData = data.content || {};
 
-    const docChildren: docx.Paragraph[] = [];
+    // Elements can now be either Paragraphs OR Native Word Tables
+    const docChildren: (docx.Paragraph | docx.Table)[] = [];
 
-    // 🚨 HIGH-QUALITY PARSER: Converts raw AI Markdown into native Microsoft Word formatting
-    const processTextToParagraphs = (text: string) => {
-      const lines = text.split("\n");
-      const paragraphs: docx.Paragraph[] = [];
+    // Helper: Parses inline formatting (like bold/italics) for both paragraphs and table cells
+    const parseInlineText = (text: string, forceBold: boolean = false): docx.TextRun[] => {
+      const runs: docx.TextRun[] = [];
+      let currentIdx = 0;
+      const regex = /(\*\*.*?\*\*|\*.*?\*)/g;
+      let match;
 
-      lines.forEach((line) => {
-        const trimmed = line.trim();
-        
-        // 1. Handle Empty Lines
-        if (trimmed === "") {
-          paragraphs.push(new docx.Paragraph({ text: "", spacing: { after: 200 } }));
-          return;
+      while ((match = regex.exec(text)) !== null) {
+        if (match.index > currentIdx) {
+          runs.push(new docx.TextRun({ text: text.substring(currentIdx, match.index), size: 24, font: "Times New Roman", bold: forceBold }));
         }
 
-        // 2. Handle Markdown Headers (e.g., ### Chapter One)
+        const matchedText = match[0];
+        if (matchedText.startsWith("**")) {
+          runs.push(new docx.TextRun({ text: matchedText.slice(2, -2), bold: true, size: 24, font: "Times New Roman" }));
+        } else if (matchedText.startsWith("*")) {
+          runs.push(new docx.TextRun({ text: matchedText.slice(1, -1), italics: true, size: 24, font: "Times New Roman", bold: forceBold }));
+        }
+        currentIdx = regex.lastIndex;
+      }
+
+      if (currentIdx < text.length) {
+        runs.push(new docx.TextRun({ text: text.substring(currentIdx), size: 24, font: "Times New Roman", bold: forceBold }));
+      }
+      return runs;
+    };
+
+    // 🚨 UPGRADED COMPILER ENGINE: Detects Tables, Diagrams, and Paragraphs
+    const processTextToElements = (text: string) => {
+      const lines = text.split("\n");
+      const elements: (docx.Paragraph | docx.Table)[] = [];
+      
+      let inTable = false;
+      let tableRowsData: string[][] = [];
+
+      // Flushes the gathered table rows into a native Microsoft Word Table
+      const flushTable = () => {
+        if (tableRowsData.length > 0) {
+          const table = new docx.Table({
+            width: { size: 100, type: docx.WidthType.PERCENTAGE }, // Full width table
+            rows: tableRowsData.map((row, rowIndex) => {
+              const isHeader = rowIndex === 0;
+              return new docx.TableRow({
+                children: row.map(cellText => {
+                  return new docx.TableCell({
+                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                    // Light gray shading for the header row to make it academic and professional
+                    shading: isHeader ? { fill: "F3F4F6", type: docx.ShadingType.CLEAR, color: "auto" } : undefined,
+                    children: [
+                      new docx.Paragraph({
+                        children: parseInlineText(cellText, isHeader),
+                        alignment: isHeader ? docx.AlignmentType.CENTER : docx.AlignmentType.LEFT,
+                        spacing: { after: 0, line: 240 },
+                      })
+                    ]
+                  });
+                })
+              });
+            })
+          });
+          
+          elements.push(table);
+          // Add a buffer paragraph after the table
+          elements.push(new docx.Paragraph({ text: "", spacing: { after: 200 } }));
+        }
+        inTable = false;
+        tableRowsData = [];
+      };
+
+      for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+
+        // 1. TABLE STATE DETECTOR
+        if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+          inTable = true;
+          // Ignore the Markdown separator row (e.g. |---|---|)
+          if (trimmed.match(/^\|[\s\-\|]+\|$/)) {
+            continue;
+          }
+          // Split the columns and clean the text
+          const cells = trimmed.split("|").slice(1, -1).map(c => c.trim());
+          tableRowsData.push(cells);
+          continue;
+        } else if (inTable) {
+          // If we hit a normal line but we were in a table, flush the table to the document
+          flushTable();
+        }
+
+        // 2. EMPTY LINES
+        if (trimmed === "") {
+          elements.push(new docx.Paragraph({ text: "", spacing: { after: 200 } }));
+          continue;
+        }
+
+        // 3. CONCEPTUAL FRAMEWORK INTERCEPTOR (Highlights placeholder in bold Orange)
+        if (trimmed.includes("[INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE]")) {
+           elements.push(
+            new docx.Paragraph({
+              children: [
+                new docx.TextRun({ 
+                  text: "[INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE]", 
+                  bold: true, 
+                  color: "D97706", 
+                  size: 24, 
+                  font: "Times New Roman" 
+                })
+              ],
+              alignment: docx.AlignmentType.CENTER,
+              spacing: { before: 400, after: 400 },
+            })
+          );
+          continue;
+        }
+
+        // 4. MARKDOWN HEADINGS (e.g. ### Chapter One)
         const headerMatch = trimmed.match(/^(#{1,6})\s+(.*)/);
         if (headerMatch) {
           const level = headerMatch[1].length;
-          // Strip out any bold stars the AI might have accidentally left inside the header
           const contentText = headerMatch[2].replace(/\*/g, ""); 
           
           let headingLevel;
@@ -53,70 +153,28 @@ export async function POST(req: Request) {
               default: headingLevel = docx.HeadingLevel.HEADING_4; break;
           }
 
-          paragraphs.push(
+          elements.push(
             new docx.Paragraph({
               text: contentText.toUpperCase(),
               heading: headingLevel,
               spacing: { before: 400, after: 200 },
             })
           );
-          return;
+          continue;
         }
 
-        // 3. Handle Markdown Tables (Aligns them using Monospace font)
-        if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
-          paragraphs.push(
-            new docx.Paragraph({
-              children: [new docx.TextRun({ text: trimmed, font: "Courier New", size: 20 })],
-              spacing: { after: 0, line: 240 },
-              alignment: docx.AlignmentType.LEFT,
-            })
-          );
-          return;
-        }
-
-        // 4. Handle Bullet Points
+        // 5. NORMAL PARAGRAPHS & BULLETS
         const isBullet = /^[\*\-]\s+(.*)/.exec(trimmed);
         let contentText = trimmed;
         let bulletInfo = undefined;
 
         if (isBullet) {
            contentText = isBullet[1];
-           bulletInfo = { level: 0 }; // Native Word bullet point
+           bulletInfo = { level: 0 };
         }
 
-        // 5. Inline Formatting Parser (Bold & Italics)
-        const runs: docx.TextRun[] = [];
-        let currentIdx = 0;
-        // Regex looks for **bold** or *italic*
-        const regex = /(\*\*.*?\*\*|\*.*?\*)/g;
-        let match;
-
-        while ((match = regex.exec(contentText)) !== null) {
-          // Push normal text before the bold/italic
-          if (match.index > currentIdx) {
-            runs.push(new docx.TextRun({ text: contentText.substring(currentIdx, match.index), size: 24, font: "Times New Roman" }));
-          }
-
-          const matchedText = match[0];
-          if (matchedText.startsWith("**")) {
-            // It is Bold
-            runs.push(new docx.TextRun({ text: matchedText.slice(2, -2), bold: true, size: 24, font: "Times New Roman" }));
-          } else if (matchedText.startsWith("*")) {
-            // It is Italic
-            runs.push(new docx.TextRun({ text: matchedText.slice(1, -1), italics: true, size: 24, font: "Times New Roman" }));
-          }
-          currentIdx = regex.lastIndex;
-        }
-
-        // Push any remaining normal text at the end of the line
-        if (currentIdx < contentText.length) {
-          runs.push(new docx.TextRun({ text: contentText.substring(currentIdx), size: 24, font: "Times New Roman" }));
-        }
-
-        // Configure the final paragraph
         const paraOptions: any = {
-          children: runs,
+          children: parseInlineText(contentText),
           spacing: { after: 200, line: 360 }, // 1.5 Line Spacing standard
           alignment: docx.AlignmentType.JUSTIFIED,
         };
@@ -126,10 +184,13 @@ export async function POST(req: Request) {
             paraOptions.alignment = docx.AlignmentType.LEFT;
         }
 
-        paragraphs.push(new docx.Paragraph(paraOptions));
-      });
+        elements.push(new docx.Paragraph(paraOptions));
+      }
 
-      return paragraphs;
+      // Flush table if the document ended immediately after a table
+      if (inTable) flushTable();
+
+      return elements;
     };
 
     if (isFullDocument) {
@@ -153,9 +214,8 @@ export async function POST(req: Request) {
             docChildren.push(new docx.Paragraph({ text: "", pageBreakBefore: true }));
           }
 
-          // 🚨 FIX: We removed the injected chapter title here so the AI's title doesn't duplicate!
-          const paragraphs = processTextToParagraphs(chapterText);
-          docChildren.push(...paragraphs);
+          const elements = processTextToElements(chapterText);
+          docChildren.push(...elements);
         }
       });
 
@@ -166,9 +226,8 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Chapter content not found" }, { status: 404 });
       }
 
-      // 🚨 FIX: Removed duplicate title generation for single chapters too
-      const paragraphs = processTextToParagraphs(singleChapterText);
-      docChildren.push(...paragraphs);
+      const elements = processTextToElements(singleChapterText);
+      docChildren.push(...elements);
     }
 
     const document = new docx.Document({
