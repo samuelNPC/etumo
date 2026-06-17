@@ -9,6 +9,7 @@ interface TurnitinData {
   studentName: string;
   overallSimilarity: number;
   aiScore: number; 
+  aiFlaggedSections: number; // Added back
   issues: {
     notCited: number;
     missingQuotations: number;
@@ -29,7 +30,6 @@ export default function OriginalityCenter() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   
-  // Track which specific remediation type is loading
   const [remediatingType, setRemediatingType] = useState<"ai_bypass" | "plagiarism_bypass" | null>(null);
   const [turnitinData, setTurnitinData] = useState<TurnitinData | null>(null);
 
@@ -99,10 +99,7 @@ export default function OriginalityCenter() {
       const response = await fetch("/api/rewrite", { 
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          flaggedTexts: [inputText],
-          type: type 
-        }),
+        body: JSON.stringify({ flaggedTexts: [inputText], type: type }),
       });
 
       const data = await response.json();
@@ -169,7 +166,15 @@ export default function OriginalityCenter() {
 
       if (!response.ok || data.error) throw new Error(data.error || "Failed to parse document.");
 
-      setTurnitinData(data.data);
+      // Set fallback values if AI missed them
+      const safeData = {
+        ...data.data,
+        aiScore: data.data.aiScore || 0,
+        overallSimilarity: data.data.overallSimilarity || 0,
+        aiFlaggedSections: data.data.aiFlaggedSections || 0,
+      };
+
+      setTurnitinData(safeData);
 
     } catch (error: any) {
       alert(error.message || "An error occurred while scanning the document.");
@@ -178,7 +183,6 @@ export default function OriginalityCenter() {
     }
   };
 
-  // Full Document Remediation with Type Selection
   const handleProceedToPayment = async (type: "ai_bypass" | "plagiarism_bypass") => {
     const featureName = type === "ai_bypass" ? "AI Detection Remediation" : "Plagiarism Remediation";
     const isPaid = window.confirm(`Redirecting to Mobile Money checkout for 25,000 UGX to unlock ${featureName}. Click OK to simulate successful payment.`);
@@ -189,7 +193,7 @@ export default function OriginalityCenter() {
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
-      formData.append("type", type); // Send the specific bypass type to the API
+      formData.append("type", type); 
 
       const aiResponse = await fetch("/api/remediate-document", {
         method: "POST",
@@ -238,7 +242,7 @@ export default function OriginalityCenter() {
   return (
     <div className="space-y-8">
 
-      
+      {/* Text Remediation Section (Unchanged) */}
       <div className="border border-gray-300 bg-white p-6 shadow-sm">
         <div className="flex justify-between items-start mb-4">
           <h2 className="text-xl font-bold tracking-tight text-gray-900">Text Remediation</h2>
@@ -246,103 +250,79 @@ export default function OriginalityCenter() {
             {FREE_LIMIT - usageCount} Free Uses Left Today
           </span>
         </div>
-
         <textarea
           className="w-full border border-gray-300 p-4 bg-gray-50 outline-none text-sm rounded-none focus:border-black resize-y min-h-[150px] mb-4"
           placeholder="Paste flagged paragraphs from Turnitin or AI detectors here..."
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
         />
-
         <div className="flex flex-col sm:flex-row gap-4 mb-4">
-          <button 
-            onClick={() => handleFix("plagiarism_bypass")} 
-            disabled={isProcessing}
-            className="flex-1 bg-black text-white px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-gray-800 disabled:bg-gray-400 transition-colors rounded-none"
-          >
+          <button onClick={() => handleFix("plagiarism_bypass")} disabled={isProcessing} className="flex-1 bg-black text-white px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-gray-800 disabled:bg-gray-400 transition-colors rounded-none">
             {isProcessing ? "Processing..." : "Fix Similarity"}
           </button>
-          <button 
-            onClick={() => handleFix("ai_bypass")} 
-            disabled={isProcessing}
-            className="flex-1 bg-[#d97706] text-white px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-[#b45309] disabled:bg-gray-400 transition-colors rounded-none"
-          >
+          <button onClick={() => handleFix("ai_bypass")} disabled={isProcessing} className="flex-1 bg-[#d97706] text-white px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-[#b45309] disabled:bg-gray-400 transition-colors rounded-none">
             {isProcessing ? "Processing..." : "Humanize (AI Bypass)"}
           </button>
         </div>
-
         {cleanedResults && (
           <div className="bg-green-50 p-6 border border-green-200 mt-6 relative animate-in fade-in duration-300">
             <h3 className="font-bold text-xs uppercase tracking-wider text-green-900 mb-2">Remediated Text</h3>
             <p className="text-sm text-green-900 pr-8 whitespace-pre-wrap">{cleanedResults}</p>
-
-            <button 
-              onClick={handleCopy}
-              className="absolute top-4 right-4 p-2 text-green-700 hover:text-green-900 hover:bg-green-100 transition-colors"
-              title="Copy to clipboard"
-            >
+            <button onClick={handleCopy} className="absolute top-4 right-4 p-2 text-green-700 hover:text-green-900 hover:bg-green-100 transition-colors" title="Copy to clipboard">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
                 <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
               </svg>
             </button>
-
-            {copyFeedback && (
-              <p className="text-[10px] font-bold uppercase tracking-widest text-green-700 mt-4 animate-in fade-in">
-                ✓ Text copied to clipboard
-              </p>
-            )}
+            {copyFeedback && <p className="text-[10px] font-bold uppercase tracking-widest text-green-700 mt-4 animate-in fade-in">✓ Text copied to clipboard</p>}
           </div>
         )}
       </div>
 
-      
+      {/* Document Upload Section (Unchanged) */}
       <div className="border border-gray-300 bg-gray-50 p-8 text-center shadow-sm relative">
         <h3 className="font-bold text-lg text-gray-900 mb-2">Upload Turnitin Report</h3>
         <p className="text-sm text-gray-600 mb-6 max-w-md mx-auto">
           Upload your raw Turnitin PDF. Our engine will instantly scan your metrics and isolate flagged content.
         </p>
-
         <div className={`border-2 border-dashed ${selectedFile ? 'border-green-500 bg-green-50' : 'border-gray-400 bg-white'} p-8 mb-6 relative cursor-pointer hover:bg-gray-100 transition-colors`}>
-          <input 
-            type="file" 
-            accept=".pdf" 
-            onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
-          />
+          <input type="file" accept=".pdf" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
           <span className={`font-bold text-sm uppercase tracking-widest ${selectedFile ? 'text-green-700' : 'text-gray-700'}`}>
             {selectedFile ? selectedFile.name : "Select Turnitin PDF File"}
           </span>
           {!selectedFile && <p className="text-xs text-gray-400 mt-2">Attaching is free.</p>}
         </div>
-
-        <button 
-          onClick={handleDocumentUpload}
-          disabled={!selectedFile || isParsing}
-          className="bg-black text-white px-8 py-3 text-xs font-bold uppercase tracking-widest hover:bg-gray-800 disabled:bg-gray-400 transition-colors rounded-none"
-        >
+        <button onClick={handleDocumentUpload} disabled={!selectedFile || isParsing} className="bg-black text-white px-8 py-3 text-xs font-bold uppercase tracking-widest hover:bg-gray-800 disabled:bg-gray-400 transition-colors rounded-none">
           {isParsing ? "Scanning Document Elements..." : "Analyze Document"}
         </button>
       </div>
 
-      
+      {/* Turnitin Parsed Dashboard Modal */}
       {turnitinData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white border border-gray-300 max-w-lg w-full p-8 shadow-2xl relative text-left">
-            <button 
-              onClick={() => !remediatingType && setTurnitinData(null)}
-              disabled={remediatingType !== null}
-              className="absolute top-4 right-4 text-gray-400 hover:text-black font-bold p-2 transition-colors disabled:opacity-50"
-            >
-              ✕
-            </button>
+            <button onClick={() => !remediatingType && setTurnitinData(null)} disabled={remediatingType !== null} className="absolute top-4 right-4 text-gray-400 hover:text-black font-bold p-2 transition-colors disabled:opacity-50">✕</button>
 
+            {/* 🚨 THE TRIGGER MESSAGE */}
             <div className="border-b border-gray-200 pb-4 mb-6">
               <span className="text-xs font-mono uppercase text-[#d97706] tracking-wider font-bold">Analysis Complete</span>
-              <h3 className="text-2xl font-bold tracking-tight text-gray-900 mt-1">Hello, {turnitinData.studentName}</h3>
-              <p className="text-sm text-gray-500 mt-1">We have securely mapped your document framework.</p>
+              <h3 className="text-2xl font-bold tracking-tight text-gray-900 mt-1">Hello, {turnitinData.studentName || "Student"}</h3>
+              
+              <div className="mt-2 text-sm text-gray-700 font-medium leading-relaxed">
+                {(turnitinData.aiScore > 0 || turnitinData.overallSimilarity > 0) ? (
+                  <p>
+                    We found <span className="text-red-600 font-bold">{turnitinData.overallSimilarity > 0 ? `${turnitinData.overallSimilarity}% Plagiarism` : ''}</span> 
+                    {turnitinData.overallSimilarity > 0 && turnitinData.aiScore > 0 ? ' and ' : ''}
+                    <span className="text-purple-600 font-bold">{turnitinData.aiScore > 0 ? `${turnitinData.aiScore}% AI` : ''}</span>
+                    {turnitinData.aiFlaggedSections > 0 ? ` across ${turnitinData.aiFlaggedSections} sections` : ''} in your document.
+                  </p>
+                ) : (
+                  <p>We have securely mapped your document framework. No major similarity detected.</p>
+                )}
+              </div>
             </div>
 
+            {/* Data Grid */}
             <div className={`grid gap-4 mb-6 ${turnitinData.overallSimilarity > 0 && turnitinData.aiScore > 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
               {turnitinData.overallSimilarity > 0 && (
                 <div className="bg-red-50 p-4 border border-red-100 flex flex-col justify-center">
@@ -358,7 +338,7 @@ export default function OriginalityCenter() {
               )}
               <div className="bg-orange-50 p-4 border border-orange-100 flex flex-col justify-center">
                 <span className="block text-[10px] font-bold text-orange-800 uppercase tracking-wider mb-1">Unquoted Matches</span>
-                <span className="text-2xl font-bold text-orange-600">{turnitinData.issues.notCited}</span>
+                <span className="text-2xl font-bold text-orange-600">{turnitinData.issues?.notCited || 0}</span>
               </div>
             </div>
 
@@ -369,20 +349,11 @@ export default function OriginalityCenter() {
             </div>
 
             <div className="flex flex-col gap-3">
-              <button 
-                onClick={() => handleProceedToPayment("plagiarism_bypass")}
-                disabled={remediatingType !== null}
-                className="w-full bg-black text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-gray-800 disabled:bg-gray-500 transition-colors rounded-none shadow-md"
-              >
+              <button onClick={() => handleProceedToPayment("plagiarism_bypass")} disabled={remediatingType !== null} className="w-full bg-black text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-gray-800 disabled:bg-gray-500 transition-colors rounded-none shadow-md">
                 <span>{remediatingType === "plagiarism_bypass" ? "Rewriting Document..." : "Remediate Similarity (25,000 UGX)"}</span>
                 {remediatingType === "plagiarism_bypass" && <span className="text-[10px] font-medium opacity-70 mt-1 capitalize tracking-normal animate-pulse">Rebuilding tables and citations (up to 60s)</span>}
               </button>
-
-              <button 
-                onClick={() => handleProceedToPayment("ai_bypass")}
-                disabled={remediatingType !== null}
-                className="w-full bg-[#d97706] text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-[#b45309] disabled:bg-gray-500 transition-colors rounded-none shadow-md"
-              >
+              <button onClick={() => handleProceedToPayment("ai_bypass")} disabled={remediatingType !== null} className="w-full bg-[#d97706] text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-[#b45309] disabled:bg-gray-500 transition-colors rounded-none shadow-md">
                 <span>{remediatingType === "ai_bypass" ? "Humanizing Document..." : "Remediate AI Detection (25,000 UGX)"}</span>
                 {remediatingType === "ai_bypass" && <span className="text-[10px] font-medium opacity-70 mt-1 capitalize tracking-normal animate-pulse">Injecting perplexity and burstiness (up to 60s)</span>}
               </button>
@@ -391,7 +362,18 @@ export default function OriginalityCenter() {
         </div>
       )}
 
-      
+      {/* Subscription Overlay (Unchanged) */}
+      {showSubscription && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white border border-gray-300 max-w-md w-full p-8 shadow-2xl text-center relative">
+            <button onClick={() => setShowSubscription(false)} className="absolute top-4 right-4 text-gray-400 hover:text-black font-bold p-2 transition-colors">✕</button>
+            <div className="w-16 h-16 bg-orange-100 border-2 border-[#d97706] rounded-full flex items-center justify-center mx-auto mb-4"><span className="text-[#d97706] text-2xl font-bold">!</span></div>
+            <h3 className="font-bold text-2xl tracking-tight text-gray-900 mb-2">Daily Limit Reached</h3>
+            <p className="text-sm text-gray-500 mb-8">You have used your 20 free text removals for today. You can wait until tomorrow, or unlock bulk removals right now.</p>
+            <button onClick={() => alert("Redirecting to payment gateway...")} className="w-full bg-[#d97706] text-white font-bold py-4 uppercase text-sm tracking-wider hover:bg-[#b45309] transition-colors rounded-none">Unlock Now (10,000 UGX)</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
