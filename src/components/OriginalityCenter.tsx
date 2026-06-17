@@ -29,8 +29,8 @@ export default function OriginalityCenter() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   
-  // Loading state specifically for the long document remediation process
-  const [isRemediating, setIsRemediating] = useState(false);
+  // Track which specific remediation type is loading
+  const [remediatingType, setRemediatingType] = useState<"ai_bypass" | "plagiarism_bypass" | null>(null);
   const [turnitinData, setTurnitinData] = useState<TurnitinData | null>(null);
 
   const FREE_LIMIT = 20;
@@ -178,17 +178,18 @@ export default function OriginalityCenter() {
     }
   };
 
-  // The fully integrated Document Remediation Pipeline
-  const handleProceedToPayment = async () => {
-    const isPaid = window.confirm("Redirecting to Mobile Money checkout for 25,000 UGX. Click OK to simulate successful payment.");
+  // Full Document Remediation with Type Selection
+  const handleProceedToPayment = async (type: "ai_bypass" | "plagiarism_bypass") => {
+    const featureName = type === "ai_bypass" ? "AI Detection Remediation" : "Plagiarism Remediation";
+    const isPaid = window.confirm(`Redirecting to Mobile Money checkout for 25,000 UGX to unlock ${featureName}. Click OK to simulate successful payment.`);
     if (!isPaid || !selectedFile) return;
 
-    setIsRemediating(true);
+    setRemediatingType(type);
 
     try {
-      // Step 1: Send the PDF to Gemini for full-text extraction and rewrite
       const formData = new FormData();
       formData.append("file", selectedFile);
+      formData.append("type", type); // Send the specific bypass type to the API
 
       const aiResponse = await fetch("/api/remediate-document", {
         method: "POST",
@@ -201,7 +202,6 @@ export default function OriginalityCenter() {
         throw new Error(aiData.error || "Failed to remediate the document.");
       }
 
-      // Step 2: Send the clean Markdown text to our DOCX Compiler
       const compileResponse = await fetch("/api/compile-document", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -215,32 +215,30 @@ export default function OriginalityCenter() {
         throw new Error("Document compilation failed.");
       }
 
-      // Step 3: Trigger the DOCX download automatically
       const blob = await compileResponse.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${turnitinData?.studentName?.replace(/\s+/g, "_") || "Clean"}_Remediated.docx`;
+      a.download = `${turnitinData?.studentName?.replace(/\s+/g, "_") || "Clean"}_${type === "ai_bypass" ? "AI_Bypassed" : "Plagiarism_Bypassed"}.docx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       a.remove();
       
-      // Cleanup UI
       setTurnitinData(null); 
       setSelectedFile(null);
 
     } catch (error: any) {
       alert(error.message || "An error occurred during document remediation.");
     } finally {
-      setIsRemediating(false);
+      setRemediatingType(null);
     }
   };
 
   return (
     <div className="space-y-8">
 
-      {/* SECTION 1: Text Remediation (Free Quota) */}
+      
       <div className="border border-gray-300 bg-white p-6 shadow-sm">
         <div className="flex justify-between items-start mb-4">
           <h2 className="text-xl font-bold tracking-tight text-gray-900">Text Remediation</h2>
@@ -298,7 +296,7 @@ export default function OriginalityCenter() {
         )}
       </div>
 
-      {/* SECTION 2: Full Document Upload */}
+      
       <div className="border border-gray-300 bg-gray-50 p-8 text-center shadow-sm relative">
         <h3 className="font-bold text-lg text-gray-900 mb-2">Upload Turnitin Report</h3>
         <p className="text-sm text-gray-600 mb-6 max-w-md mx-auto">
@@ -327,13 +325,13 @@ export default function OriginalityCenter() {
         </button>
       </div>
 
-      {/* SECTION 3: Turnitin Parsed Dashboard Modal */}
+      
       {turnitinData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white border border-gray-300 max-w-lg w-full p-8 shadow-2xl relative text-left">
             <button 
-              onClick={() => !isRemediating && setTurnitinData(null)}
-              disabled={isRemediating}
+              onClick={() => !remediatingType && setTurnitinData(null)}
+              disabled={remediatingType !== null}
               className="absolute top-4 right-4 text-gray-400 hover:text-black font-bold p-2 transition-colors disabled:opacity-50"
             >
               ✕
@@ -366,54 +364,34 @@ export default function OriginalityCenter() {
 
             <div className="bg-gray-50 border border-gray-200 p-4 mb-6">
               <p className="text-sm text-gray-700 leading-relaxed font-medium">
-                Our engine will automatically extract the flagged text segments, restructure the syntax to break 
-                {turnitinData.aiScore > 0 ? " AI detection algorithms" : " similarity matching"}, 
-                and inject proper academic citations to drop your score.
+                Our engine will extract flagged segments and restructure the syntax to bypass detection algorithms, injecting proper academic formatting to drop your score.
               </p>
             </div>
 
-            <button 
-              onClick={handleProceedToPayment}
-              disabled={isRemediating}
-              className="w-full bg-black text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-gray-800 disabled:bg-gray-500 transition-colors rounded-none shadow-md"
-            >
-              <span>{isRemediating ? "Rewriting Entire Document..." : "Remediate Full Document (25,000 UGX)"}</span>
-              {isRemediating && <span className="text-[10px] font-medium opacity-70 mt-1 capitalize tracking-normal animate-pulse">This may take up to 60 seconds</span>}
-            </button>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={() => handleProceedToPayment("plagiarism_bypass")}
+                disabled={remediatingType !== null}
+                className="w-full bg-black text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-gray-800 disabled:bg-gray-500 transition-colors rounded-none shadow-md"
+              >
+                <span>{remediatingType === "plagiarism_bypass" ? "Rewriting Document..." : "Remediate Similarity (25,000 UGX)"}</span>
+                {remediatingType === "plagiarism_bypass" && <span className="text-[10px] font-medium opacity-70 mt-1 capitalize tracking-normal animate-pulse">Rebuilding tables and citations (up to 60s)</span>}
+              </button>
+
+              <button 
+                onClick={() => handleProceedToPayment("ai_bypass")}
+                disabled={remediatingType !== null}
+                className="w-full bg-[#d97706] text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-[#b45309] disabled:bg-gray-500 transition-colors rounded-none shadow-md"
+              >
+                <span>{remediatingType === "ai_bypass" ? "Humanizing Document..." : "Remediate AI Detection (25,000 UGX)"}</span>
+                {remediatingType === "ai_bypass" && <span className="text-[10px] font-medium opacity-70 mt-1 capitalize tracking-normal animate-pulse">Injecting perplexity and burstiness (up to 60s)</span>}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Subscription Block */}
-      {showSubscription && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white border border-gray-300 max-w-md w-full p-8 shadow-2xl text-center relative">
-            <button 
-              onClick={() => setShowSubscription(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-black font-bold p-2 transition-colors"
-            >
-              ✕
-            </button>
-            <div className="w-16 h-16 bg-orange-100 border-2 border-[#d97706] rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-[#d97706] text-2xl font-bold">!</span>
-            </div>
-            <h3 className="font-bold text-2xl tracking-tight text-gray-900 mb-2">Daily Limit Reached</h3>
-            <p className="text-sm text-gray-500 mb-8">
-              You have used your 20 free text removals for today. You can wait until tomorrow, or unlock bulk removals right now.
-            </p>
-            <div className="bg-gray-50 border border-gray-200 p-4 mb-6">
-              <h4 className="font-bold text-gray-900 uppercase tracking-wider text-sm mb-1">Pro Tier</h4>
-              <p className="text-xs text-gray-600">Unlock 100 text removals for uninterrupted workflow.</p>
-            </div>
-            <button 
-              onClick={() => alert("Redirecting to payment gateway...")}
-              className="w-full bg-[#d97706] text-white font-bold py-4 uppercase text-sm tracking-wider hover:bg-[#b45309] transition-colors rounded-none"
-            >
-              Unlock Now (10,000 UGX)
-            </button>
-          </div>
-        </div>
-      )}
+      
     </div>
   );
 }
