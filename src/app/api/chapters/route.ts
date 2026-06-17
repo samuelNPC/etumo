@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4. The Master Unified Prompt (Strict Formatting Guardrails Added)
+    // 4. The Master Unified Prompt (Strict Academic Paragraph Guardrails Added)
     const prompt = `
       You are an expert academic research writer drafting a final-year university project.
       
@@ -69,28 +69,29 @@ export async function POST(req: Request) {
       Your explicit task: Write the exact content ONLY for the section named: "${chapterLabel.toUpperCase()}".
       
       CRITICAL RULES - YOU MUST OBEY THESE STRICTLY:
-      1. NO CHAPTER TITLES OR HEADINGS AT THE TOP: Do NOT output the title "${chapterLabel.toUpperCase()}" at the beginning of your response. Start immediately with the first paragraph of the body text. Our compiler handles the master titles.
-      2. NO EXCESSIVE BOLDING: Use bolding (**) extremely sparingly. Do not bold entire sentences or paragraphs. Only use it for minor sub-headings if absolutely necessary.
-      3. SINGLE ISOLATED SECTION: If the requested section is "Declaration", write ONLY the Declaration body. If it is "Title Page", write ONLY the Title Page body. Do not group multiple preliminary pages together. 
-      4. CLEAN PARAGRAPHING: Do NOT output HTML tags (<p>, <br>, <b>, <span>). Use standard double line breaks for paragraphs. 
-      5. NO CONVERSATIONAL FILLER: Do not write introductory phrases like "Here is the content for your research", "Sure", or "**(Start of Document)**". The very first word you output must be the actual beginning of the academic document text.
-      6. ACADEMIC TONE: Ensure the tone is formal and rigorous. For body chapters, cite theoretical literature where appropriate. 
-      7. FORMATTING: Apply the university formatting rules provided: ${formattingRules}
-      8. PLACEHOLDERS: Use standard brackets like [Student Name] or [University Name] where specific personal data is missing.
+      1. FORMAL TITLE: YOU MUST start your response with the formal Chapter Title in capital letters (e.g., CHAPTER THREE: METHODOLOGY or exactly what "${chapterLabel.toUpperCase()}" implies).
+      2. INTRODUCTION HEADING: The very next line MUST be the introduction heading (e.g., 3.0 Introduction or 3.1 Introduction) before you write the first paragraph. Do not skip straight to X.2.
+      3. ACADEMIC NUMBERING: Use standard academic numbering (1.1, 1.2, 1.3) for all subsequent sub-headings to maintain a logical flow.
+      4. NO BULLET POINTS: Do not use bullet points or dashed lists under any circumstances. Present all information in cohesive, standard academic paragraphs. If a sequential list is strictly required, use formal numbering (1., 2., 3.).
+      5. NO EXCESSIVE BOLDING: Use bolding sparingly. Do not bold entire paragraphs. Use it only for main headings.
+      6. SINGLE ISOLATED SECTION: If the requested section is "Declaration", write ONLY the Declaration body. Do not group multiple preliminary pages together. 
+      7. CLEAN PARAGRAPHING: Do NOT output HTML tags (<p>, <br>, <b>, <span>). Use standard double line breaks for paragraphs. 
+      8. NO CONVERSATIONAL FILLER: Do not write introductory phrases like "Here is the content for your research". The very first word you output must be the Chapter Title.
+      9. ACADEMIC TONE: Ensure the tone is formal and rigorous. For body chapters, cite theoretical literature where appropriate. 
+      10. FORMATTING: Apply the university formatting rules provided: ${formattingRules}
+      11. PLACEHOLDERS: Use standard brackets like [Student Name] or [University Name] where specific personal data is missing.
     `;
 
     // 5. Generate the Chapter
     const result = await model.generateContent(prompt);
     let generatedText = result.response.text().trim();
 
-    // 6. Safety Cleanup: Strip out conversational intro phrases and accidental double headings
+    // 6. Safety Cleanup: Strip out conversational intro phrases
     generatedText = generatedText.replace(/```(md|markdown|html)?/gi, "").replace(/```/g, "").trim();
     generatedText = generatedText.replace(/^(Here is|Sure|Certainly).*?\n/i, "").trim();
-    
-    // Safety Net: If the AI disobeyed and printed the chapter title anyway, silently remove it
-    const escapedLabel = chapterLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const titleRegex = new RegExp(`^(#+\\s*)?${escapedLabel}\\s*\\n`, 'i');
-    generatedText = generatedText.replace(titleRegex, "").trim();
+
+    // 🚨 NEW: Strict Markdown Cleanup (Removes ALL asterisks to enforce clean paragraph text)
+    generatedText = generatedText.replace(/\*/g, ""); 
 
     // 7. Auto-Save back to Firestore & Update Progress
     await updateDoc(projectRef, {
