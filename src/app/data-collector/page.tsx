@@ -63,7 +63,8 @@ export default function DataCollectorPage() {
     setStep("success");
   };
 
-  const finalLink = `etumo.ug/collect/${analysisData?.instrumentId?.substring(0, 4) || "demo"}`;
+  const finalLink = `etumo.ug/collect/${analysisData?.instrumentId || "demo"}`;
+
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(`https://${finalLink}`);
