@@ -5,7 +5,6 @@ import { auth, db } from "@/lib/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
 
-// Added aiScore to our interface
 interface TurnitinData {
   studentName: string;
   overallSimilarity: number;
@@ -29,6 +28,9 @@ export default function OriginalityCenter() {
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
+  
+  // Loading state specifically for the long document remediation process
+  const [isRemediating, setIsRemediating] = useState(false);
   const [turnitinData, setTurnitinData] = useState<TurnitinData | null>(null);
 
   const FREE_LIMIT = 20;
@@ -105,9 +107,7 @@ export default function OriginalityCenter() {
 
       const data = await response.json();
 
-      if (!response.ok || data.error) {
-        throw new Error(data.error || "Server processing failed");
-      }
+      if (!response.ok || data.error) throw new Error(data.error || "Server processing failed");
 
       if (data.success && data.cleanedData && data.cleanedData.length > 0) {
         setCleanedResults(data.cleanedData[0].rewritten);
@@ -167,9 +167,7 @@ export default function OriginalityCenter() {
 
       const data = await response.json();
 
-      if (!response.ok || data.error) {
-        throw new Error(data.error || "Failed to parse document.");
-      }
+      if (!response.ok || data.error) throw new Error(data.error || "Failed to parse document.");
 
       setTurnitinData(data.data);
 
@@ -180,10 +178,63 @@ export default function OriginalityCenter() {
     }
   };
 
-  const handleProceedToPayment = () => {
-    alert("Redirecting to Mobile Money checkout for 25,000 UGX...");
-    setTurnitinData(null); 
-    setSelectedFile(null);
+  // The fully integrated Document Remediation Pipeline
+  const handleProceedToPayment = async () => {
+    const isPaid = window.confirm("Redirecting to Mobile Money checkout for 25,000 UGX. Click OK to simulate successful payment.");
+    if (!isPaid || !selectedFile) return;
+
+    setIsRemediating(true);
+
+    try {
+      // Step 1: Send the PDF to Gemini for full-text extraction and rewrite
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      const aiResponse = await fetch("/api/remediate-document", {
+        method: "POST",
+        body: formData,
+      });
+
+      const aiData = await aiResponse.json();
+
+      if (!aiResponse.ok || aiData.error) {
+        throw new Error(aiData.error || "Failed to remediate the document.");
+      }
+
+      // Step 2: Send the clean Markdown text to our DOCX Compiler
+      const compileResponse = await fetch("/api/compile-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          rawText: aiData.remediatedText,
+          rawTitle: `${turnitinData?.studentName || "Student"} Cleaned Research`
+        }),
+      });
+
+      if (!compileResponse.ok) {
+        throw new Error("Document compilation failed.");
+      }
+
+      // Step 3: Trigger the DOCX download automatically
+      const blob = await compileResponse.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${turnitinData?.studentName?.replace(/\s+/g, "_") || "Clean"}_Remediated.docx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+      
+      // Cleanup UI
+      setTurnitinData(null); 
+      setSelectedFile(null);
+
+    } catch (error: any) {
+      alert(error.message || "An error occurred during document remediation.");
+    } finally {
+      setIsRemediating(false);
+    }
   };
 
   return (
@@ -281,8 +332,9 @@ export default function OriginalityCenter() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white border border-gray-300 max-w-lg w-full p-8 shadow-2xl relative text-left">
             <button 
-              onClick={() => setTurnitinData(null)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-black font-bold p-2 transition-colors"
+              onClick={() => !isRemediating && setTurnitinData(null)}
+              disabled={isRemediating}
+              className="absolute top-4 right-4 text-gray-400 hover:text-black font-bold p-2 transition-colors disabled:opacity-50"
             >
               ✕
             </button>
@@ -293,43 +345,24 @@ export default function OriginalityCenter() {
               <p className="text-sm text-gray-500 mt-1">We have securely mapped your document framework.</p>
             </div>
 
-            {/* DYNAMIC GRID: Shows Similarity, AI, or Both depending on the document */}
             <div className={`grid gap-4 mb-6 ${turnitinData.overallSimilarity > 0 && turnitinData.aiScore > 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-              
               {turnitinData.overallSimilarity > 0 && (
                 <div className="bg-red-50 p-4 border border-red-100 flex flex-col justify-center">
                   <span className="block text-[10px] font-bold text-red-800 uppercase tracking-wider mb-1">Plagiarism</span>
                   <span className="text-2xl font-bold text-red-600">{turnitinData.overallSimilarity}%</span>
                 </div>
               )}
-
               {turnitinData.aiScore > 0 && (
                 <div className="bg-purple-50 p-4 border border-purple-100 flex flex-col justify-center">
                   <span className="block text-[10px] font-bold text-purple-800 uppercase tracking-wider mb-1">AI Detected</span>
                   <span className="text-2xl font-bold text-purple-600">{turnitinData.aiScore}%</span>
                 </div>
               )}
-
               <div className="bg-orange-50 p-4 border border-orange-100 flex flex-col justify-center">
                 <span className="block text-[10px] font-bold text-orange-800 uppercase tracking-wider mb-1">Unquoted Matches</span>
                 <span className="text-2xl font-bold text-orange-600">{turnitinData.issues.notCited}</span>
               </div>
-
             </div>
-
-            {turnitinData.topSources.length > 0 && turnitinData.overallSimilarity > 0 && (
-              <div className="mb-6">
-                <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-2">Top Flagged Sources Detected:</h4>
-                <ul className="text-xs text-gray-600 space-y-1.5 font-mono">
-                  {turnitinData.topSources.map((source, idx) => (
-                    <li key={idx} className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0"></span>
-                      <span className="truncate">{source}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
 
             <div className="bg-gray-50 border border-gray-200 p-4 mb-6">
               <p className="text-sm text-gray-700 leading-relaxed font-medium">
@@ -341,17 +374,19 @@ export default function OriginalityCenter() {
 
             <button 
               onClick={handleProceedToPayment}
-              className="w-full bg-black text-white font-bold py-4 uppercase text-sm tracking-wider hover:bg-gray-800 transition-colors rounded-none shadow-md"
+              disabled={isRemediating}
+              className="w-full bg-black text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-gray-800 disabled:bg-gray-500 transition-colors rounded-none shadow-md"
             >
-              Remediate Full Document (25,000 UGX)
+              <span>{isRemediating ? "Rewriting Entire Document..." : "Remediate Full Document (25,000 UGX)"}</span>
+              {isRemediating && <span className="text-[10px] font-medium opacity-70 mt-1 capitalize tracking-normal animate-pulse">This may take up to 60 seconds</span>}
             </button>
           </div>
         </div>
       )}
 
+      {/* Subscription Block */}
       {showSubscription && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4 backdrop-blur-sm animate-in fade-in">
-          {/* ... (Subscription UI Remains the same) ... */}
           <div className="bg-white border border-gray-300 max-w-md w-full p-8 shadow-2xl text-center relative">
             <button 
               onClick={() => setShowSubscription(false)}
