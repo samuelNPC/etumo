@@ -171,10 +171,10 @@ export default function Header() {
               <div className="flex flex-col gap-3">
                 <p className="text-sm font-medium text-gray-500 mb-2">Signed in as {user.email?.split('@')[0]}</p>
                 <button 
-                  onClick={() => router.push("/workspace")}
+                  onClick={() => router.push("/dashboard")}
                   className="bg-black text-white px-4 py-4 text-base font-bold w-full rounded-lg transition-colors"
                 >
-                  Enter Workspace
+                  Go to Your Dashboard
                 </button>
                 <button 
                   onClick={handleLogout}
