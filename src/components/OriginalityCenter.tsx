@@ -4,18 +4,26 @@ import { useState, useEffect } from "react";
 import { auth, db } from "@/lib/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
+import LoadingGame from "./LoadingGame"; // Import the mini-game
 
 interface TurnitinData {
   studentName: string;
   overallSimilarity: number;
   aiScore: number; 
-  aiFlaggedSections: number; // Added back
+  aiFlaggedSections: number; 
   issues: {
     notCited: number;
     missingQuotations: number;
   };
   topSources: string[];
 }
+
+const PARSING_MESSAGES = [
+  "Reading PDF structure...",
+  "Extracting similarity metrics...",
+  "Identifying AI footprints...",
+  "Compiling originality report..."
+];
 
 export default function OriginalityCenter() {
   const [user, setUser] = useState<User | null>(null);
@@ -29,7 +37,8 @@ export default function OriginalityCenter() {
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
-  
+  const [parsingMsgIndex, setParsingMsgIndex] = useState(0); // Dynamic parsing text
+
   const [remediatingType, setRemediatingType] = useState<"ai_bypass" | "plagiarism_bypass" | null>(null);
   const [turnitinData, setTurnitinData] = useState<TurnitinData | null>(null);
 
@@ -37,16 +46,12 @@ export default function OriginalityCenter() {
 
   useEffect(() => {
     const today = new Date().toDateString();
-
     const loadLocalData = () => {
       const localData = localStorage.getItem("etumo_usage");
       if (localData) {
         const { count, date } = JSON.parse(localData);
-        if (date === today) {
-          setUsageCount(count);
-        } else {
-          setUsageCount(0);
-        }
+        if (date === today) setUsageCount(count);
+        else setUsageCount(0);
       }
     };
 
@@ -56,7 +61,6 @@ export default function OriginalityCenter() {
         try {
           const userRef = doc(db, "users", currentUser.uid);
           const userSnap = await getDoc(userRef);
-
           if (userSnap.exists()) {
             const data = userSnap.data();
             if (data.lastUsageDate === today) {
@@ -65,27 +69,34 @@ export default function OriginalityCenter() {
             } else {
               setUsageCount(0);
             }
-          } else {
-            loadLocalData();
-          }
+          } else loadLocalData();
         } catch (error) {
-          console.error("Error fetching user data:", error);
           loadLocalData();
         }
-      } else {
-        loadLocalData();
-      }
+      } else loadLocalData();
     });
 
     return () => unsubscribe();
   }, []);
+
+  // Cycle parsing messages when isParsing is true
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isParsing) {
+      interval = setInterval(() => {
+        setParsingMsgIndex((prev) => (prev + 1) % PARSING_MESSAGES.length);
+      }, 2500);
+    } else {
+      setParsingMsgIndex(0);
+    }
+    return () => clearInterval(interval);
+  }, [isParsing]);
 
   const handleFix = async (type: "ai_bypass" | "plagiarism_bypass") => {
     if (usageCount >= FREE_LIMIT) {
       setShowSubscription(true);
       return;
     }
-
     if (!inputText.trim()) {
       alert("Please paste some text first.");
       return;
@@ -103,7 +114,6 @@ export default function OriginalityCenter() {
       });
 
       const data = await response.json();
-
       if (!response.ok || data.error) throw new Error(data.error || "Server processing failed");
 
       if (data.success && data.cleanedData && data.cleanedData.length > 0) {
@@ -118,19 +128,10 @@ export default function OriginalityCenter() {
       localStorage.setItem("etumo_usage", JSON.stringify({ count: newCount, date: today }));
 
       if (user) {
-        try {
-          const userRef = doc(db, "users", user.uid);
-          await setDoc(userRef, {
-            originalityUsageCount: newCount,
-            lastUsageDate: today
-          }, { merge: true });
-        } catch (error) {
-          console.error("Error syncing to Firebase:", error);
-        }
+        await setDoc(doc(db, "users", user.uid), { originalityUsageCount: newCount, lastUsageDate: today }, { merge: true });
       }
     } catch (error) {
       alert("Error processing text. Check your connection and try again.");
-      console.error(error);
     } finally {
       setIsProcessing(false);
     }
@@ -157,16 +158,11 @@ export default function OriginalityCenter() {
       const formData = new FormData();
       formData.append("file", selectedFile);
 
-      const response = await fetch("/api/parse-turnitin", {
-        method: "POST",
-        body: formData, 
-      });
-
+      const response = await fetch("/api/parse-turnitin", { method: "POST", body: formData });
       const data = await response.json();
 
       if (!response.ok || data.error) throw new Error(data.error || "Failed to parse document.");
 
-      // Set fallback values if AI missed them
       const safeData = {
         ...data.data,
         aiScore: data.data.aiScore || 0,
@@ -175,7 +171,6 @@ export default function OriginalityCenter() {
       };
 
       setTurnitinData(safeData);
-
     } catch (error: any) {
       alert(error.message || "An error occurred while scanning the document.");
     } finally {
@@ -188,23 +183,17 @@ export default function OriginalityCenter() {
     const isPaid = window.confirm(`Redirecting to Mobile Money checkout for 25,000 UGX to unlock ${featureName}. Click OK to simulate successful payment.`);
     if (!isPaid || !selectedFile) return;
 
-    setRemediatingType(type);
+    setRemediatingType(type); // Triggers the LoadingGame overlay
 
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("type", type); 
 
-      const aiResponse = await fetch("/api/remediate-document", {
-        method: "POST",
-        body: formData,
-      });
-
+      const aiResponse = await fetch("/api/remediate-document", { method: "POST", body: formData });
       const aiData = await aiResponse.json();
 
-      if (!aiResponse.ok || aiData.error) {
-        throw new Error(aiData.error || "Failed to remediate the document.");
-      }
+      if (!aiResponse.ok || aiData.error) throw new Error(aiData.error || "Failed to remediate the document.");
 
       const compileResponse = await fetch("/api/compile-document", {
         method: "POST",
@@ -215,9 +204,7 @@ export default function OriginalityCenter() {
         }),
       });
 
-      if (!compileResponse.ok) {
-        throw new Error("Document compilation failed.");
-      }
+      if (!compileResponse.ok) throw new Error("Document compilation failed.");
 
       const blob = await compileResponse.blob();
       const url = window.URL.createObjectURL(blob);
@@ -228,21 +215,25 @@ export default function OriginalityCenter() {
       a.click();
       window.URL.revokeObjectURL(url);
       a.remove();
-      
+
       setTurnitinData(null); 
       setSelectedFile(null);
-
     } catch (error: any) {
       alert(error.message || "An error occurred during document remediation.");
     } finally {
-      setRemediatingType(null);
+      setRemediatingType(null); // Closes the LoadingGame overlay
     }
   };
 
   return (
     <div className="space-y-8">
+      
+      {/* TRIGGER THE GAME OVERLAY */}
+      {remediatingType && (
+        <LoadingGame featureName={remediatingType === "ai_bypass" ? "AI Detection Restructuring" : "Similarity / Plagiarism Rewrite"} />
+      )}
 
-      {/* Text Remediation Section (Unchanged) */}
+      {/* SECTION 1: Text Remediation */}
       <div className="border border-gray-300 bg-white p-6 shadow-sm">
         <div className="flex justify-between items-start mb-4">
           <h2 className="text-xl font-bold tracking-tight text-gray-900">Text Remediation</h2>
@@ -279,7 +270,7 @@ export default function OriginalityCenter() {
         )}
       </div>
 
-      {/* Document Upload Section (Unchanged) */}
+      {/* SECTION 2: Document Upload */}
       <div className="border border-gray-300 bg-gray-50 p-8 text-center shadow-sm relative">
         <h3 className="font-bold text-lg text-gray-900 mb-2">Upload Turnitin Report</h3>
         <p className="text-sm text-gray-600 mb-6 max-w-md mx-auto">
@@ -293,21 +284,20 @@ export default function OriginalityCenter() {
           {!selectedFile && <p className="text-xs text-gray-400 mt-2">Attaching is free.</p>}
         </div>
         <button onClick={handleDocumentUpload} disabled={!selectedFile || isParsing} className="bg-black text-white px-8 py-3 text-xs font-bold uppercase tracking-widest hover:bg-gray-800 disabled:bg-gray-400 transition-colors rounded-none">
-          {isParsing ? "Scanning Document Elements..." : "Analyze Document"}
+          {isParsing ? PARSING_MESSAGES[parsingMsgIndex] : "Analyze Document"}
         </button>
       </div>
 
-      {/* Turnitin Parsed Dashboard Modal */}
-      {turnitinData && (
+      {/* SECTION 3: Dashboard Modal */}
+      {turnitinData && !remediatingType && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white border border-gray-300 max-w-lg w-full p-8 shadow-2xl relative text-left">
-            <button onClick={() => !remediatingType && setTurnitinData(null)} disabled={remediatingType !== null} className="absolute top-4 right-4 text-gray-400 hover:text-black font-bold p-2 transition-colors disabled:opacity-50">✕</button>
+            <button onClick={() => setTurnitinData(null)} className="absolute top-4 right-4 text-gray-400 hover:text-black font-bold p-2 transition-colors">✕</button>
 
-            {/* 🚨 THE TRIGGER MESSAGE */}
             <div className="border-b border-gray-200 pb-4 mb-6">
               <span className="text-xs font-mono uppercase text-[#d97706] tracking-wider font-bold">Analysis Complete</span>
               <h3 className="text-2xl font-bold tracking-tight text-gray-900 mt-1">Hello, {turnitinData.studentName || "Student"}</h3>
-              
+
               <div className="mt-2 text-sm text-gray-700 font-medium leading-relaxed">
                 {(turnitinData.aiScore > 0 || turnitinData.overallSimilarity > 0) ? (
                   <p>
@@ -322,7 +312,6 @@ export default function OriginalityCenter() {
               </div>
             </div>
 
-            {/* Data Grid */}
             <div className={`grid gap-4 mb-6 ${turnitinData.overallSimilarity > 0 && turnitinData.aiScore > 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
               {turnitinData.overallSimilarity > 0 && (
                 <div className="bg-red-50 p-4 border border-red-100 flex flex-col justify-center">
@@ -342,34 +331,25 @@ export default function OriginalityCenter() {
               </div>
             </div>
 
-            <div className="bg-gray-50 border border-gray-200 p-4 mb-6">
-              <p className="text-sm text-gray-700 leading-relaxed font-medium">
-                Our engine will extract flagged segments and restructure the syntax to bypass detection algorithms, injecting proper academic formatting to drop your score.
-              </p>
-            </div>
-
             <div className="flex flex-col gap-3">
-              <button onClick={() => handleProceedToPayment("plagiarism_bypass")} disabled={remediatingType !== null} className="w-full bg-black text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-gray-800 disabled:bg-gray-500 transition-colors rounded-none shadow-md">
-                <span>{remediatingType === "plagiarism_bypass" ? "Rewriting Document..." : "Remediate Similarity (25,000 UGX)"}</span>
-                {remediatingType === "plagiarism_bypass" && <span className="text-[10px] font-medium opacity-70 mt-1 capitalize tracking-normal animate-pulse">Rebuilding tables and citations (up to 60s)</span>}
+              <button onClick={() => handleProceedToPayment("plagiarism_bypass")} className="w-full bg-black text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-gray-800 transition-colors rounded-none shadow-md">
+                Remediate Similarity (25,000 UGX)
               </button>
-              <button onClick={() => handleProceedToPayment("ai_bypass")} disabled={remediatingType !== null} className="w-full bg-[#d97706] text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-[#b45309] disabled:bg-gray-500 transition-colors rounded-none shadow-md">
-                <span>{remediatingType === "ai_bypass" ? "Humanizing Document..." : "Remediate AI Detection (25,000 UGX)"}</span>
-                {remediatingType === "ai_bypass" && <span className="text-[10px] font-medium opacity-70 mt-1 capitalize tracking-normal animate-pulse">Injecting perplexity and burstiness (up to 60s)</span>}
+              <button onClick={() => handleProceedToPayment("ai_bypass")} className="w-full bg-[#d97706] text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-[#b45309] transition-colors rounded-none shadow-md">
+                Remediate AI Detection (25,000 UGX)
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Subscription Overlay (Unchanged) */}
       {showSubscription && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white border border-gray-300 max-w-md w-full p-8 shadow-2xl text-center relative">
             <button onClick={() => setShowSubscription(false)} className="absolute top-4 right-4 text-gray-400 hover:text-black font-bold p-2 transition-colors">✕</button>
             <div className="w-16 h-16 bg-orange-100 border-2 border-[#d97706] rounded-full flex items-center justify-center mx-auto mb-4"><span className="text-[#d97706] text-2xl font-bold">!</span></div>
             <h3 className="font-bold text-2xl tracking-tight text-gray-900 mb-2">Daily Limit Reached</h3>
-            <p className="text-sm text-gray-500 mb-8">You have used your 20 free text removals for today. You can wait until tomorrow, or unlock bulk removals right now.</p>
+            <p className="text-sm text-gray-500 mb-8">You have used your 20 free text removals for today.</p>
             <button onClick={() => alert("Redirecting to payment gateway...")} className="w-full bg-[#d97706] text-white font-bold py-4 uppercase text-sm tracking-wider hover:bg-[#b45309] transition-colors rounded-none">Unlock Now (10,000 UGX)</button>
           </div>
         </div>
