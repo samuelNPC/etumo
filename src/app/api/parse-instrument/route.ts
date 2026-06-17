@@ -52,10 +52,9 @@ export async function POST(req: Request) {
     ]);
 
     let responseText = result.response.text().trim();
-    
-    // Safety Cleanup: Safely formatted to prevent line-break errors during copy-pasting
-    responseText = responseText.replace(/```(json)?/gi, "");
-    responseText = responseText.replace(/```/g, "").trim();
+
+    // 🚨 BULLETPROOF CLEANUP: Uses `{3}` to avoid literal backticks breaking the Vercel build
+    responseText = responseText.replace(/`{3}(json)?/gi, "").replace(/`{3}/g, "").trim();
     responseText = responseText.replace(/^(Here is|Sure|Certainly|I have).*?\n/i, "").trim();
 
     const jsonStart = responseText.indexOf('{');
