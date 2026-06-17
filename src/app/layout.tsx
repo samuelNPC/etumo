@@ -1,26 +1,57 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css"; 
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
+// Preserving your dynamic export
 export const dynamic = "force-dynamic";
+
+// 🚨 Added Viewport export to handle mobile scaling and PWA theme colors natively
+export const viewport: Viewport = {
+  themeColor: "#000000",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.etomu.com"),
-  title: "Etomu | Where research gets done.",
+  title: {
+    default: "Etomu | Where research gets done.",
+    template: "%s | Etomu",
+  },
   description: "Etomu is an AI-powered research workspace that helps students, researchers, and academic writers move from idea to submission-ready documents faster.",
+  applicationName: "Etomu",
+  keywords: ["Research AI", "Uganda University", "Turnitin bypass", "Dissertation AI", "Data Collection", "Etomu"],
+  authors: [{ name: "Etomu Team" }],
+  creator: "Etomu",
   openGraph: {
     title: "Etomu | Where research gets done.",
     description: "Etomu is an AI-powered research workspace that helps students, researchers, and academic writers move from idea to submission-ready documents faster.",
     url: "https://www.etomu.com",
     siteName: "Etomu",
     type: "website",
-    locale: "en_US",
+    locale: "en_UG",
+    images: [
+      {
+        url: "/og-image.png", // Ensure you add this 1200x630 image to your public folder!
+        width: 1200,
+        height: 630,
+        alt: "Etomu Dashboard Preview",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Etomu | Where research gets done.",
+    description: "Etomu is an AI-powered research workspace that helps students, researchers, and academic writers move from idea to submission-ready documents faster.",
+    images: ["/og-image.png"],
   },
   icons: {
     icon: "/favicon.png",
     apple: "/apple-touch-icon.png",
   },
+  manifest: "/manifest.webmanifest", // Links the PWA settings
 };
 
 export default function RootLayout({
