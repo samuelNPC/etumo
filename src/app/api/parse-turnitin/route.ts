@@ -2,7 +2,6 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
 export async function POST(req: Request) {
   try {
@@ -44,14 +43,28 @@ export async function POST(req: Request) {
       }
     `;
 
-    const result = await model.generateContent([
-      { inlineData: { data: base64Data, mimeType } },
-      prompt,
-    ]);
+    let result;
+    try {
+      // Attempt 1: Try the heavy-duty Pro model
+      const proModel = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+      result = await proModel.generateContent([
+        { inlineData: { data: base64Data, mimeType } },
+        prompt,
+      ]);
+    } catch (apiError: any) {
+      console.warn("Pro model overloaded or failed, falling back to Flash...", apiError.message);
+      
+      // Attempt 2: Silent Fallback to the highly available Flash model
+      const flashModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      result = await flashModel.generateContent([
+        { inlineData: { data: base64Data, mimeType } },
+        prompt,
+      ]);
+    }
 
     let responseText = result.response.text().trim();
 
-    // 🚨 BULLETPROOF CLEANUP: Uses `{3}` to avoid literal backticks breaking the build
+    // 🚨 BULLETPROOF CLEANUP
     responseText = responseText.replace(/`{3}(json)?/gi, "").replace(/`{3}/g, "").trim();
     responseText = responseText.replace(/^(Here is|Sure|Certainly|I have).*?\n/i, "").trim();
 
