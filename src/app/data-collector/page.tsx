@@ -63,7 +63,7 @@ export default function DataCollectorPage() {
     setStep("success");
   };
 
-  const finalLink = `etumo.ug/collect/${analysisData?.instrumentId || "demo"}`;
+  const finalLink = `etumo.com/collect/${analysisData?.instrumentId || "demo"}`;
 
 
   const handleCopyLink = () => {
