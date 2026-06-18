@@ -91,9 +91,9 @@ export default function Home() {
           {/* Social Proof / Trust Banner */}
           <div className="flex items-center gap-3 mb-10 bg-white/60 backdrop-blur-sm border border-gray-200 px-5 py-2.5 rounded-full shadow-sm">
             <div className="flex -space-x-2">
-              <div className="w-6 h-6 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-blue-700">JD</div>
-              <div className="w-6 h-6 rounded-full bg-green-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-green-700">SA</div>
-              <div className="w-6 h-6 rounded-full bg-purple-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-purple-700">MK</div>
+              <div className="w-6 h-6 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-blue-700">MUST</div>
+              <div className="w-6 h-6 rounded-full bg-green-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-green-700">KIU</div>
+              <div className="w-6 h-6 rounded-full bg-purple-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-purple-700">KAB</div>
             </div>
             <span className="text-sm font-bold text-gray-700">Trusted by students across Uganda</span>
           </div>
