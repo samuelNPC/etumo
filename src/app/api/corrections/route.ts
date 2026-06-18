@@ -3,9 +3,53 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 
-// Using the Pro model for maximum quality multimodal reasoning
+// Initialize AI without binding a specific model globally
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+
+// Utility to pause execution for backoff
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// --- THE RESILIENCY ENGINE (MULTIMODAL SUPPORT) ---
+async function applyCorrectionsWithResiliency(promptParts: any[]) {
+  // CASCADE: Quality First (3.1 Pro), Speed Second (3.5 Flash), Legacy Last (2.5 Pro)
+  const cascade = ["gemini-3.1-pro", "gemini-3.5-flash", "gemini-2.5-pro"];
+  const MAX_RETRIES_PER_MODEL = 2; 
+
+  for (let i = 0; i < cascade.length; i++) {
+    const currentModelName = cascade[i];
+    const model = genAI.getGenerativeModel({ model: currentModelName });
+
+    for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
+      try {
+        console.log(`[Corrections - Attempt ${attempt}] Sending request to ${currentModelName}...`);
+        // generateContent accepts the array of text/image parts directly
+        return await model.generateContent(promptParts);
+      } catch (error: any) {
+        // Detect 503 Service Unavailable or High Demand errors
+        const isTrafficError = 
+          error.status === 503 || 
+          error.message?.includes("503") || 
+          error.message?.includes("high demand");
+        
+        if (isTrafficError) {
+          if (attempt < MAX_RETRIES_PER_MODEL) {
+            const delay = 1000 * attempt; 
+            console.warn(`Traffic spike on ${currentModelName}. Retrying in ${delay}ms...`);
+            await sleep(delay);
+          } else {
+            console.warn(`Exhausted retries for ${currentModelName}. Cascading to next model.`);
+            break; // Move to the next model in the cascade array
+          }
+        } else {
+          // If it's a 400 Bad Request, API key issue, or file format issue, throw immediately
+          throw error; 
+        }
+      }
+    }
+  }
+  
+  throw new Error("ALL_MODELS_EXHAUSTED");
+}
 
 export async function POST(req: Request) {
   try {
@@ -61,11 +105,11 @@ export async function POST(req: Request) {
       });
     }
 
-    // 3. Generate the corrected rewrite
-    const result = await model.generateContent(promptParts);
+    // 3. Generate the corrected rewrite using the Resilient Fallback Engine
+    const result = await applyCorrectionsWithResiliency(promptParts);
     let correctedText = result.response.text().trim();
 
-    // 4. Safety Cleanup: Strip out conversational intro phrases and markdown blocks if the AI hallucinates them
+    // 4. Safety Cleanup: Strip out conversational intro phrases and markdown blocks
     correctedText = correctedText.replace(/```(md|markdown|html)?/gi, "").replace(/```/g, "").trim();
     correctedText = correctedText.replace(/^(Here is|Sure|Certainly|I have).*?\n/i, "").trim();
 
@@ -76,8 +120,20 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, updatedContent: correctedText }, { status: 200 });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error applying corrections:", error);
+
+    // CATCH THE CUSTOM CASCADE FAILURE
+    if (error.message === "ALL_MODELS_EXHAUSTED") {
+      return NextResponse.json(
+        { 
+          code: "HIGH_TRAFFIC", 
+          error: "Our System is currently facing exceptionally high traffic while processing these corrections. Please try again in a few minutes." 
+        }, 
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json({ error: "Failed to apply supervisor feedback." }, { status: 500 });
   }
 }
