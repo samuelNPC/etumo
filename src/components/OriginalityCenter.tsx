@@ -5,6 +5,7 @@ import { auth, db } from "@/lib/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
 import LoadingGame from "./LoadingGame"; 
+import PaymentModal from "./PaymentModal"; // 🚨 Imported the new LivePay modal
 
 interface TurnitinData {
   studentName: string;
@@ -47,11 +48,23 @@ export default function OriginalityCenter() {
 
   const [remediatingType, setRemediatingType] = useState<"ai_bypass" | "plagiarism_bypass" | null>(null);
   const [turnitinData, setTurnitinData] = useState<TurnitinData | null>(null);
-  
-  // 🚨 NEW: State to hold the final document in memory
+
   const [remediatedFile, setRemediatedFile] = useState<RemediatedFile | null>(null);
 
-  const FREE_LIMIT = 20;
+  // 🚨 NEW: Universal Payment State
+  const [paymentState, setPaymentState] = useState<{
+    isActive: boolean;
+    amount: number;
+    description: string;
+    onSuccess: () => void;
+  }>({
+    isActive: false,
+    amount: 0,
+    description: "",
+    onSuccess: () => {},
+  });
+
+  const FREE_LIMIT = 30; // 🚨 Aligned with your 30 Free limit criteria
 
   useEffect(() => {
     const today = new Date().toDateString();
@@ -100,7 +113,6 @@ export default function OriginalityCenter() {
     return () => clearInterval(interval);
   }, [isParsing]);
 
-  // Clean up object URLs to prevent memory leaks when resetting
   const handleResetWorkspace = () => {
     if (remediatedFile) {
       window.URL.revokeObjectURL(remediatedFile.url);
@@ -196,7 +208,6 @@ export default function OriginalityCenter() {
     }
   };
 
-  // 🚨 NEW: Download Management Functions
   const triggerDownloadAction = (url: string, filename: string) => {
     const a = document.createElement("a");
     a.href = url;
@@ -209,23 +220,58 @@ export default function OriginalityCenter() {
   const handlePopupDownloadNow = () => {
     if (remediatedFile) triggerDownloadAction(remediatedFile.url, remediatedFile.filename);
     setRemediatedFile(prev => prev ? { ...prev, downloaded: true } : null);
-    setRemediatingType(null); // Close game overlay
+    setRemediatingType(null); 
   };
 
   const handlePopupDownloadLater = () => {
-    setRemediatingType(null); // Just close the game overlay, file stays in memory
+    setRemediatingType(null); 
   };
 
-  const handleProceedToPayment = async (type: "ai_bypass" | "plagiarism_bypass") => {
-    const featureName = type === "ai_bypass" ? "AI Detection Remediation" : "Plagiarism Remediation";
-    const isPaid = window.confirm(`Redirecting to Mobile Money checkout for 25,000 UGX to unlock ${featureName}. Click OK to simulate successful payment.`);
-    if (!isPaid || !selectedFile) return;
+  // 🚨 NEW: Payment Unlock Logic for Text Removals
+  const handleUnlockTextPackage = () => {
+    setPaymentState({
+      isActive: true,
+      amount: 10000, // 10,000 UGX for 100 text removals
+      description: "Unlock 100 Text Similarity/AI Removals",
+      onSuccess: async () => {
+        setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
+        setShowSubscription(false);
+        
+        // Push usageCount negative to grant exactly 100 new free attempts
+        const newUsageCount = FREE_LIMIT - 100;
+        setUsageCount(newUsageCount);
+        const today = new Date().toDateString();
+        localStorage.setItem("etumo_usage", JSON.stringify({ count: newUsageCount, date: today }));
 
-    setRemediatingType(type); // Triggers the Game Overlay
+        if (user) {
+          await setDoc(doc(db, "users", user.uid), { originalityUsageCount: newUsageCount, lastUsageDate: today }, { merge: true });
+        }
+      }
+    });
+  };
+
+  // 🚨 NEW: Triggers the Payment Modal for the Document Engine
+  const initiateDocumentRemediation = (type: "ai_bypass" | "plagiarism_bypass") => {
+    if (!selectedFile) return;
+
+    setPaymentState({
+      isActive: true,
+      amount: 15000, // 🚨 15,000 UGX based on pricing rules
+      description: type === "ai_bypass" ? "Full Document AI Detection Removal" : "Full Document Similarity Remediation",
+      onSuccess: () => {
+        setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
+        executeDocumentRemediation(type);
+      }
+    });
+  };
+
+  // The actual processing function that runs AFTER successful payment
+  const executeDocumentRemediation = async (type: "ai_bypass" | "plagiarism_bypass") => {
+    setRemediatingType(type);
 
     try {
       const formData = new FormData();
-      formData.append("file", selectedFile);
+      formData.append("file", selectedFile!);
       formData.append("type", type); 
 
       const aiResponse = await fetch("/api/remediate-document", { method: "POST", body: formData });
@@ -247,11 +293,8 @@ export default function OriginalityCenter() {
       const blob = await compileResponse.blob();
       const url = window.URL.createObjectURL(blob);
       const filename = `${turnitinData?.studentName?.replace(/\s+/g, "_") || "Clean"}_${type === "ai_bypass" ? "AI_Bypassed" : "Plagiarism_Bypassed"}.docx`;
-      
-      // Store in memory, triggers the success popup inside LoadingGame
+
       setRemediatedFile({ url, filename, downloaded: false });
-      
-      // Clear underlying UI so it seamlessly transitions when they close the game
       setTurnitinData(null); 
       setSelectedFile(null);
 
@@ -263,7 +306,17 @@ export default function OriginalityCenter() {
 
   return (
     <div className="space-y-8">
-      
+
+      {/* Payment Gateway Overlay */}
+      {paymentState.isActive && (
+        <PaymentModal
+          amount={paymentState.amount}
+          description={paymentState.description}
+          onSuccess={paymentState.onSuccess}
+          onCancel={() => setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} })}
+        />
+      )}
+
       {remediatingType && (
         <LoadingGame 
           featureName={remediatingType === "ai_bypass" ? "AI Detection Restructuring" : "Similarity / Plagiarism Rewrite"} 
@@ -273,7 +326,7 @@ export default function OriginalityCenter() {
         />
       )}
 
-      {/* 🚨 THE SUCCESS DASHBOARD: Shows up if a file is in memory AND the game is closed */}
+      {/* THE SUCCESS DASHBOARD */}
       {remediatedFile && !remediatingType ? (
         <div className="border border-gray-300 bg-white p-12 text-center shadow-sm animate-in fade-in duration-500">
           <div className="w-24 h-24 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -281,7 +334,7 @@ export default function OriginalityCenter() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          
+
           <h2 className="text-3xl font-black text-gray-900 tracking-tight mb-2">
             {remediatedFile.downloaded ? "Download Successful" : "Remediation Complete"}
           </h2>
@@ -320,7 +373,7 @@ export default function OriginalityCenter() {
           </div>
         </div>
       ) : (
-        /* Original Content (Hidden while Success Dashboard is active) */
+        /* Original Content */
         <div className={`space-y-8 ${remediatingType ? 'hidden' : 'block'}`}>
           <div className="border border-gray-300 bg-white p-6 shadow-sm">
             <div className="flex justify-between items-start mb-4">
@@ -424,11 +477,12 @@ export default function OriginalityCenter() {
                 </div>
 
                 <div className="flex flex-col gap-3">
-                  <button onClick={() => handleProceedToPayment("plagiarism_bypass")} className="w-full bg-black text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-gray-800 transition-colors rounded-none shadow-md">
-                    Remediate Similarity (25,000 UGX)
+                  {/* 🚨 Updated to exactly 15,000 UGX based on pricing rule */}
+                  <button onClick={() => initiateDocumentRemediation("plagiarism_bypass")} className="w-full bg-black text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-gray-800 transition-colors rounded-none shadow-md">
+                    Remediate Similarity (15,000 UGX)
                   </button>
-                  <button onClick={() => handleProceedToPayment("ai_bypass")} className="w-full bg-[#d97706] text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-[#b45309] transition-colors rounded-none shadow-md">
-                    Remediate AI Detection (25,000 UGX)
+                  <button onClick={() => initiateDocumentRemediation("ai_bypass")} className="w-full bg-[#d97706] text-white font-bold py-4 flex flex-col items-center justify-center uppercase text-sm tracking-wider hover:bg-[#b45309] transition-colors rounded-none shadow-md">
+                    Remediate AI Detection (15,000 UGX)
                   </button>
                 </div>
               </div>
@@ -441,8 +495,11 @@ export default function OriginalityCenter() {
                 <button onClick={() => setShowSubscription(false)} className="absolute top-4 right-4 text-gray-400 hover:text-black font-bold p-2 transition-colors">✕</button>
                 <div className="w-16 h-16 bg-orange-100 border-2 border-[#d97706] rounded-full flex items-center justify-center mx-auto mb-4"><span className="text-[#d97706] text-2xl font-bold">!</span></div>
                 <h3 className="font-bold text-2xl tracking-tight text-gray-900 mb-2">Daily Limit Reached</h3>
-                <p className="text-sm text-gray-500 mb-8">You have used your 20 free text removals for today.</p>
-                <button onClick={() => alert("Redirecting to payment gateway...")} className="w-full bg-[#d97706] text-white font-bold py-4 uppercase text-sm tracking-wider hover:bg-[#b45309] transition-colors rounded-none">Unlock Now (10,000 UGX)</button>
+                <p className="text-sm text-gray-500 mb-8">You have used your 30 free text removals for today.</p>
+                {/* 🚨 Updated to 10,000 UGX based on pricing rule */}
+                <button onClick={handleUnlockTextPackage} className="w-full bg-[#d97706] text-white font-bold py-4 uppercase text-sm tracking-wider hover:bg-[#b45309] transition-colors rounded-none">
+                  Unlock 100 Removals (10,000 UGX)
+                </button>
               </div>
             </div>
           )}
