@@ -1,7 +1,57 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
+// Initialize AI without binding a specific model globally
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+
+// Utility to pause execution for backoff
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// --- THE RESILIENCY ENGINE (WITH DYNAMIC TEMPERATURE) ---
+async function remediateDocumentWithResiliency(promptParts: any[], temperature: number) {
+  // CASCADE: Quality First (3.1 Pro), Speed Second (3.5 Flash), Legacy Last (2.5 Pro)
+  const cascade = ["gemini-3.1-pro", "gemini-3.5-flash", "gemini-2.5-pro"];
+  const MAX_RETRIES_PER_MODEL = 2; 
+
+  for (let i = 0; i < cascade.length; i++) {
+    const currentModelName = cascade[i];
+    
+    // Inject the dynamic temperature into the model configuration for this specific attempt
+    const model = genAI.getGenerativeModel({ 
+      model: currentModelName,
+      generationConfig: { temperature } 
+    });
+
+    for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
+      try {
+        console.log(`[Remediation - Attempt ${attempt}] Sending request to ${currentModelName} (Temp: ${temperature})...`);
+        return await model.generateContent(promptParts);
+      } catch (error: any) {
+        // Detect 503 Service Unavailable or High Demand errors
+        const isTrafficError = 
+          error.status === 503 || 
+          error.message?.includes("503") || 
+          error.message?.includes("high demand");
+        
+        if (isTrafficError) {
+          if (attempt < MAX_RETRIES_PER_MODEL) {
+            const delay = 1000 * attempt; 
+            console.warn(`Traffic spike on ${currentModelName}. Retrying in ${delay}ms...`);
+            await sleep(delay);
+          } else {
+            console.warn(`Exhausted retries for ${currentModelName}. Cascading to next model.`);
+            break; // Move to the next model in the cascade array
+          }
+        } else {
+          // If it's a 400 Bad Request, API key issue, or file format issue, throw immediately
+          throw error; 
+        }
+      }
+    }
+  }
+  
+  throw new Error("ALL_MODELS_EXHAUSTED");
+}
 
 export async function POST(req: Request) {
   try {
@@ -13,11 +63,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
     }
 
+    // Determine the required creativity level based on the bypass type
     const temperature = type === "ai_bypass" ? 0.85 : 0.4;
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.5-pro",
-      generationConfig: { temperature } 
-    });
 
     const mimeType = file.type;
     const arrayBuffer = await file.arrayBuffer();
@@ -56,21 +103,34 @@ export async function POST(req: Request) {
       9. NO CONVERSATIONAL FILLER: Do not output "Here is the rewritten document" or any introduction. Your very first word must be the title or first word of the actual document.
     `;
 
-    const result = await model.generateContent([
+    const promptParts = [
       { inlineData: { data: base64Data, mimeType } },
       prompt,
-    ]);
+    ];
 
+    // Process via our universal resiliency cascade, passing the required temperature
+    const result = await remediateDocumentWithResiliency(promptParts, temperature);
     let remediatedText = result.response.text().trim();
-    
+
     // 🚨 BULLETPROOF CLEANUP: Uses `{3}` to avoid literal backticks breaking the build
     remediatedText = remediatedText.replace(/`{3}(md|markdown)?/gi, "").replace(/`{3}/g, "").trim();
     remediatedText = remediatedText.replace(/^(Here is|Sure|Certainly|I have rewritten).*?\n/i, "").trim();
 
     return NextResponse.json({ success: true, remediatedText }, { status: 200 });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error remediating document:", error);
+
+    // CATCH THE CUSTOM CASCADE FAILURE
+    if (error.message === "ALL_MODELS_EXHAUSTED") {
+      return NextResponse.json(
+        { 
+          error: "Our document reconstruction nodes are currently experiencing high traffic. Please try submitting the document again in a few seconds." 
+        }, 
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json({ error: "Failed to process the document." }, { status: 500 });
   }
 }
