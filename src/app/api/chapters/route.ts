@@ -103,8 +103,25 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ chapterContent: generatedText }, { status: 200 });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error generating chapter:", error);
+
+    // 🚨 CATCH GEMINI HIGH TRAFFIC / 503 ERRORS
+    if (
+      error.status === 503 || 
+      (error.message && error.message.includes("503")) ||
+      (error.message && error.message.includes("high demand"))
+    ) {
+      return NextResponse.json(
+        { 
+          code: "HIGH_TRAFFIC", 
+          error: "Our System is currently facing high traffic." 
+        }, 
+        { status: 503 }
+      );
+    }
+
+    // Default fallback for any other errors
     return NextResponse.json({ error: "Failed to generate chapter" }, { status: 500 });
   }
 }
