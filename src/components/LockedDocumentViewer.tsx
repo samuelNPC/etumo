@@ -31,10 +31,11 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     return text.split('\n').map((line, idx) => {
       const trimmedLine = line.trim();
       if (!trimmedLine) return <br key={idx} />;
-      
-      // Handle H1 / Chapter Titles
+
+      // Handle H1 / Chapter Titles & Preliminary Pages
+      // mt-0 applied since these start at the top of a fresh page now
       if (trimmedLine.startsWith("# ")) {
-        return <h1 key={idx} className="text-2xl font-black mt-10 mb-6 text-center uppercase tracking-widest">{trimmedLine.replace("# ", "")}</h1>;
+        return <h1 key={idx} className="text-2xl font-black mt-0 mb-8 text-center uppercase tracking-widest">{trimmedLine.replace("# ", "")}</h1>;
       }
       // Handle H2
       if (trimmedLine.startsWith("## ")) {
@@ -44,7 +45,21 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
       if (trimmedLine.startsWith("### ")) {
         return <h3 key={idx} className="text-lg font-bold mt-6 mb-3">{trimmedLine.replace("### ", "")}</h3>;
       }
-      
+
+      // Handle Bolding within paragraphs (basic regex to replace **text** with <strong>text</strong>)
+      if (trimmedLine.includes("**")) {
+        const parts = trimmedLine.split(/(\*\*.*?\*\*)/g);
+        return (
+          <p key={idx} className="mb-4 text-[16px] leading-[2] text-justify">
+            {parts.map((part, i) => 
+              part.startsWith("**") && part.endsWith("**") 
+                ? <strong key={i} className="font-bold">{part.slice(2, -2)}</strong> 
+                : part
+            )}
+          </p>
+        );
+      }
+
       return <p key={idx} className="mb-4 text-[16px] leading-[2] text-justify">{line}</p>;
     });
   };
@@ -53,25 +68,31 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     return <div className="p-10 text-center text-gray-500 font-mono">Select a chapter to load the preview...</div>;
   }
 
-  // 🚨 Split the entire document by the PAGE BREAK marker to create physical "Pages"
-  const pages = content.split("[PAGE BREAK]");
+  // 🚨 AUTO-PAGINATION ENGINE
+  // 1. Convert explicit [PAGE BREAK] tags to a safe delimiter
+  // 2. Automatically inject a page break right before ANY Heading 1 (# )
+  // 3. Filter out any empty pages caused by the splits
+  const pages = content
+    .replace(/\[PAGE BREAK\]/gi, '___PAGE_BREAK___') 
+    .replace(/\n# /g, '\n___PAGE_BREAK___\n# ') 
+    .replace(/^# /, '___PAGE_BREAK___\n# ') 
+    .split('___PAGE_BREAK___')
+    .filter(page => page.trim().length > 0); 
 
   return (
     // Outer container simulates the gray background of Microsoft Word Print Layout
     <div className="bg-gray-200 py-10 px-4 sm:px-10 overflow-y-auto locked-document-viewer select-none flex flex-col gap-8 items-center min-h-[80vh]">
 
       {pages.map((pageContent, index) => {
-        if (!pageContent.trim()) return null; // Skip empty pages
-
         return (
-          // 🚨 Individual A4 Page Container
+          // 🚨 Individual A4 Page Container (1-inch margins: 25.4mm)
           <div 
             key={index} 
-            className="relative bg-white shadow-xl w-full max-w-[210mm] min-h-[297mm] px-[20mm] py-[25.4mm] pointer-events-none"
+            className="relative bg-white shadow-xl w-full max-w-[210mm] min-h-[297mm] px-[25.4mm] py-[25.4mm] pointer-events-none"
           >
             {/* Embedded Security Watermark per page */}
             <div 
-              className="absolute inset-0 pointer-events-none opacity-[0.1] flex items-center justify-center text-center z-0 overflow-hidden"
+              className="absolute inset-0 pointer-events-none opacity-[0.05] flex items-center justify-center text-center z-0 overflow-hidden"
               style={{ 
                 backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'400\' height=\'400\'><text x=\'50%\' y=\'50%\' font-family=\'sans-serif\' font-size=\'36\' font-weight=\'900\' fill=\'%23d97706\' text-anchor=\'middle\' transform=\'rotate(-45 200 200)\'>ETUMO.com</text></svg>")',
                 backgroundRepeat: 'repeat'
@@ -84,7 +105,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
             </div>
 
             {/* Page Number (Visual only) */}
-            <div className="absolute bottom-[10mm] left-0 w-full text-center text-xs text-gray-400 font-serif">
+            <div className="absolute bottom-[15mm] left-0 w-full text-center text-sm text-gray-500 font-serif">
               {index + 1}
             </div>
           </div>
@@ -96,7 +117,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
         @media print {
           body * { visibility: hidden !important; }
           .locked-document-viewer::after {
-            content: "UNAUTHORIZED PRINT ATTEMPT - Please pay to export this document officially on Etumo.com";
+            content: "UNAUTHORIZED PRINT ATTEMPT - Please pay to export this document officially on Etomu.com";
             visibility: visible !important;
             display: block;
             position: absolute;
