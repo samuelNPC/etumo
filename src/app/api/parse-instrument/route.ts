@@ -3,9 +3,52 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
 import { collection, addDoc } from "firebase/firestore";
 
-// Using the Pro model for deep document reasoning and counting
+// Initialize AI without binding a specific model globally
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+
+// Utility to pause execution for backoff
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// --- THE RESILIENCY ENGINE (MULTIMODAL INSTRUMENT PARSING) ---
+async function parseInstrumentWithResiliency(promptParts: any[]) {
+  // CASCADE: Quality First (3.1 Pro), Speed Second (3.5 Flash), Legacy Last (2.5 Pro)
+  const cascade = ["gemini-3.1-pro", "gemini-3.5-flash", "gemini-2.5-pro"];
+  const MAX_RETRIES_PER_MODEL = 2; 
+
+  for (let i = 0; i < cascade.length; i++) {
+    const currentModelName = cascade[i];
+    const model = genAI.getGenerativeModel({ model: currentModelName });
+
+    for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
+      try {
+        console.log(`[Instrument Parse - Attempt ${attempt}] Sending request to ${currentModelName}...`);
+        return await model.generateContent(promptParts);
+      } catch (error: any) {
+        // Detect 503 Service Unavailable or High Demand errors
+        const isTrafficError = 
+          error.status === 503 || 
+          error.message?.includes("503") || 
+          error.message?.includes("high demand");
+        
+        if (isTrafficError) {
+          if (attempt < MAX_RETRIES_PER_MODEL) {
+            const delay = 1000 * attempt; 
+            console.warn(`Traffic spike on ${currentModelName}. Retrying in ${delay}ms...`);
+            await sleep(delay);
+          } else {
+            console.warn(`Exhausted retries for ${currentModelName}. Cascading to next model.`);
+            break; // Move to the next model in the cascade array
+          }
+        } else {
+          // If it's a 400 Bad Request, API key issue, or file format issue, throw immediately
+          throw error; 
+        }
+      }
+    }
+  }
+  
+  throw new Error("ALL_MODELS_EXHAUSTED");
+}
 
 export async function POST(req: Request) {
   try {
@@ -48,11 +91,13 @@ export async function POST(req: Request) {
       }
     `;
 
-    const result = await model.generateContent([
+    const promptParts = [
       { inlineData: { data: base64Data, mimeType } },
       prompt,
-    ]);
+    ];
 
+    // Process via our universal resiliency cascade
+    const result = await parseInstrumentWithResiliency(promptParts);
     let responseText = result.response.text().trim();
 
     // 🚨 BULLETPROOF CLEANUP
@@ -65,7 +110,16 @@ export async function POST(req: Request) {
         responseText = responseText.substring(jsonStart, jsonEnd + 1);
     }
 
-    const extractedData = JSON.parse(responseText);
+    let extractedData;
+    try {
+      extractedData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error("Failed to parse AI output as JSON. Cleaned payload:", responseText);
+      return NextResponse.json(
+        { error: "Failed to read the document structure correctly. Please try again." }, 
+        { status: 500 }
+      );
+    }
 
     // Generate a unique ID and save a draft to the database
     const instrumentRef = await addDoc(collection(db, "instruments"), {
@@ -82,8 +136,19 @@ export async function POST(req: Request) {
       ...extractedData 
     }, { status: 200 });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error parsing instrument:", error);
+
+    // CATCH THE CUSTOM CASCADE FAILURE
+    if (error.message === "ALL_MODELS_EXHAUSTED") {
+      return NextResponse.json(
+        { 
+          error: "Our document parsing nodes are currently experiencing high traffic. Please try uploading your instrument again in a few seconds." 
+        }, 
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json({ error: "Failed to analyze the document. Please try again." }, { status: 500 });
   }
 }
