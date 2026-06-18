@@ -23,8 +23,13 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 // --- THE RESILIENCY ENGINE (QUALITY FIRST) ---
 async function generateWithResiliency(prompt: string) {
   // NEW CASCADE: Quality First (3.1 Pro), Speed Second (3.5 Flash), Legacy Last (2.5 Pro)
-  const cascade = ["gemini-3.1-pro", "gemini-3.5-flash", "gemini-2.5-pro"];
-  
+  // The Corrected Etomu Cascade
+const cascade = [
+  "gemini-3.1-pro-preview", // Note the -preview suffix!
+  "gemini-2.5-pro",
+  "gemini-3.5-flash" 
+];
+
   // Limit to 2 retries per model to prevent Next.js Serverless Function Timeouts (504 errors)
   const MAX_RETRIES_PER_MODEL = 2; 
 
