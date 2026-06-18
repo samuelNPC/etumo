@@ -1,19 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import AuthModal from "@/components/AuthModal";
-// 🚨 Utilizing your custom global AuthProvider as established in your architecture
-import { useAuth } from "@/contexts/AuthContext"; 
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged, User } from "firebase/auth";
 
 export default function Home() {
   const router = useRouter();
 
-  // Consume global auth state instead of duplicating local listeners
-  const { user } = useAuth(); 
-  
+  const [user, setUser] = useState<User | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
+
+  // Track Auth State (Restored your original working logic)
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Handle Button Clicks (Routing)
   const handleActionClick = (route: string) => {
