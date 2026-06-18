@@ -1,26 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { auth } from "@/lib/firebase";
-import { onAuthStateChanged, User } from "firebase/auth";
 import AuthModal from "@/components/AuthModal";
+// 🚨 Utilizing your custom global AuthProvider as established in your architecture
+import { useAuth } from "@/contexts/AuthContext"; 
 
 export default function Home() {
   const router = useRouter();
 
-  const [user, setUser] = useState<User | null>(null);
+  // Consume global auth state instead of duplicating local listeners
+  const { user } = useAuth(); 
+  
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
-
-  // Track Auth State
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-    });
-    return () => unsubscribe();
-  }, []);
 
   // Handle Button Clicks (Routing)
   const handleActionClick = (route: string) => {
@@ -80,14 +73,24 @@ export default function Home() {
 
       <main className="relative z-10 w-full max-w-5xl mx-auto px-4 pt-16 md:pt-28 pb-12 flex flex-col items-start md:items-center justify-start text-left md:text-center gap-16">
 
-        {/* --- TOP SECTION: VALUE PROPOSITION (Your Original Wording) --- */}
+        {/* --- TOP SECTION: VALUE PROPOSITION --- */}
         <div className="w-full flex flex-col items-start md:items-center animate-in slide-in-from-bottom-4 fade-in duration-700">
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black mb-6 tracking-tighter text-[#0f172a] leading-[1.1]">
             Where research gets done.
           </h1>
-          <p className="text-base sm:text-lg md:text-xl text-gray-700 mb-10 max-w-2xl font-medium leading-relaxed">
+          <p className="text-base sm:text-lg md:text-xl text-gray-700 mb-8 max-w-2xl font-medium leading-relaxed">
             An AI-powered workspace that helps students and writers move from idea to submission-ready documents faster.
           </p>
+
+          {/* Social Proof / Trust Banner */}
+          <div className="flex items-center gap-3 mb-10 bg-white/60 backdrop-blur-sm border border-gray-200 px-5 py-2.5 rounded-full shadow-sm">
+            <div className="flex -space-x-2">
+              <div className="w-6 h-6 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-blue-700">JD</div>
+              <div className="w-6 h-6 rounded-full bg-green-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-green-700">SA</div>
+              <div className="w-6 h-6 rounded-full bg-purple-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-purple-700">MK</div>
+            </div>
+            <span className="text-sm font-bold text-gray-700">Trusted by students across Uganda</span>
+          </div>
 
           {/* Features: Stacked on mobile, Row on desktop */}
           <div className="flex flex-col md:flex-row items-start md:items-center justify-start md:justify-center gap-5 md:gap-10 text-base font-bold text-gray-800">
@@ -106,7 +109,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* --- BOTTOM SECTION: EXPLANATORY CARDS (Your Original Alignment) --- */}
+        {/* --- BOTTOM SECTION: EXPLANATORY CARDS --- */}
         <div className="w-full max-w-xl flex flex-col items-start md:items-center animate-in slide-in-from-bottom-4 fade-in duration-700 delay-100">
           <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight mb-8">
             How can we help you today?
@@ -120,7 +123,7 @@ export default function Home() {
             >
               <div className="flex-1">
                 <h3 className="font-bold text-xl text-gray-900 mb-2 group-hover:text-blue-600 transition-colors flex items-center gap-2">
-                  Get Started <span className="text-sm font-bold uppercase tracking-widest text-blue-500 bg-blue-50 px-2 py-0.5 rounded-md hidden sm:inline-block">Workspace</span>
+                  Get Started <span className="text-[10px] font-bold uppercase tracking-widest text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md hidden sm:inline-block">Workspace</span>
                 </h3>
                 <p className="text-sm text-gray-600 font-medium leading-relaxed">
                   Enter your research topic to automatically draft, structure, and format your chapters according to university guidelines.
@@ -135,18 +138,38 @@ export default function Home() {
 
             {/* Card 2: Originality Center */}
             <button 
-              onClick={() => router.push("/originality")} // Originality center manages its own auth/free tier
+              onClick={() => router.push("/originality")} 
               className="group w-full text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-cyan-500 hover:shadow-xl transition-all duration-300 flex items-center justify-between gap-4"
             >
               <div className="flex-1">
                 <h3 className="font-bold text-xl text-gray-900 mb-2 group-hover:text-cyan-600 transition-colors flex items-center gap-2">
-                  Originality Center <span className="text-sm font-bold uppercase tracking-widest text-cyan-600 bg-cyan-50 px-2 py-0.5 rounded-md hidden sm:inline-block">Similarity Repair</span>
+                  Originality Center <span className="text-[10px] font-bold uppercase tracking-widest text-cyan-600 bg-cyan-50 border border-cyan-100 px-2 py-0.5 rounded-md hidden sm:inline-block">Similarity Repair</span>
                 </h3>
                 <p className="text-sm text-gray-600 font-medium leading-relaxed">
                   Upload your Turnitin report or flagged text to automatically bypass AI detection and fix similarity matches.
                 </p>
               </div>
               <div className="shrink-0 text-cyan-500 transition-transform transform group-hover:translate-x-2">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </button>
+
+            {/* Card 3: Data Collector */}
+            <button 
+              onClick={() => handleActionClick("/data-collector")}
+              className="group w-full text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-[#d97706] hover:shadow-xl transition-all duration-300 flex items-center justify-between gap-4"
+            >
+              <div className="flex-1">
+                <h3 className="font-bold text-xl text-gray-900 mb-2 group-hover:text-[#d97706] transition-colors flex items-center gap-2">
+                  Data Collector <span className="text-[10px] font-bold uppercase tracking-widest text-[#d97706] bg-orange-50 border border-orange-100 px-2 py-0.5 rounded-md hidden sm:inline-block">Digitize Fieldwork</span>
+                </h3>
+                <p className="text-sm text-gray-600 font-medium leading-relaxed">
+                  Stop printing questionnaires. Upload your approved instrument to deploy a mobile collection link with live analytics.
+                </p>
+              </div>
+              <div className="shrink-0 text-[#d97706] transition-transform transform group-hover:translate-x-2">
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
                 </svg>
