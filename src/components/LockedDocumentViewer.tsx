@@ -8,11 +8,11 @@ interface LockedDocumentViewerProps {
 
 export default function LockedDocumentViewer({ content }: LockedDocumentViewerProps) {
   useEffect(() => {
-    // JavaScript-level protection to block right-clicks and keyboard shortcuts
+    // 🚨 MAXIMUM SECURITY: JavaScript-level protection
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Block Ctrl+P (Print), Ctrl+C (Copy), and Ctrl+A (Select All)
-      if ((e.ctrlKey || e.metaKey) && ["p", "c", "a"].includes(e.key.toLowerCase())) {
+      // Block Ctrl+P (Print), Ctrl+C (Copy), Ctrl+A (Select All), Ctrl+S (Save Page)
+      if ((e.ctrlKey || e.metaKey) && ["p", "c", "a", "s"].includes(e.key.toLowerCase())) {
         e.preventDefault();
       }
     };
@@ -29,7 +29,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
   // Basic markdown parser for the preview (handles headings and page breaks for Full Doc view)
   const formatContent = (text: string) => {
     if (!text) return "Select a chapter from the left panel to load the document...";
-    
+
     return text.split('\n').map((line, idx) => {
       if (line.trim() === "[PAGE BREAK]") {
         return <div key={idx} className="my-12 border-b-2 border-dashed border-gray-300 w-full relative">
@@ -44,7 +44,8 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
   };
 
   return (
-    <div className="relative border-x border-b border-gray-300 p-10 sm:p-16 min-h-[800px] bg-white locked-document-viewer overflow-hidden shadow-sm">
+    // 🚨 MAXIMUM SECURITY: Added `select-none` to block mouse highlighting completely
+    <div className="relative border-x border-b border-gray-300 p-10 sm:p-16 min-h-[800px] bg-white locked-document-viewer overflow-hidden shadow-sm select-none">
 
       {/* Embedded Security Watermark */}
       <div 
@@ -55,10 +56,32 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
         }}
       ></div>
 
-      {/* The Actual Document Content */}
-      <div className="relative z-10 font-serif text-gray-800 text-[17px] leading-[2] text-justify max-w-3xl mx-auto">
+      {/* The Actual Document Content - pointer-events-none prevents double-click highlighting */}
+      <div className="relative z-10 font-serif text-gray-800 text-[17px] leading-[2] text-justify max-w-3xl mx-auto pointer-events-none">
         {formatContent(content)}
       </div>
+
+      {/* 🚨 MAXIMUM SECURITY: If they bypass JS and use browser 'File -> Print', the document blanks out */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          .locked-document-viewer::after {
+            content: "UNAUTHORIZED PRINT ATTEMPT - Please pay to export this document officially on Etumo.com";
+            visibility: visible !important;
+            display: block;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 20px;
+            font-weight: bold;
+            color: black;
+            text-align: center;
+          }
+        }
+      `}} />
 
     </div>
   );
