@@ -3,12 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import LockedDocumentViewer from "@/components/LockedDocumentViewer";
+import PaymentModal from "@/components/PaymentModal"; // 🚨 Imported LivePay Modal
 
 interface AnalysisData {
   questionCount: number;
   sectionCount: number;
   instrumentId: string;
-  previewText: string; // 🚨 Added to hold the extracted text
+  previewText: string; 
 }
 
 export default function DataCollectorPage() {
@@ -16,10 +17,22 @@ export default function DataCollectorPage() {
   const [step, setStep] = useState<"upload" | "analyzing" | "checkout" | "success">("upload");
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  
-  // Controls the edge-to-edge document preview
+
   const [showPreview, setShowPreview] = useState(false);
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
+
+  // 🚨 Universal Payment State
+  const [paymentState, setPaymentState] = useState<{
+    isActive: boolean;
+    amount: number;
+    description: string;
+    onSuccess: () => void;
+  }>({
+    isActive: false,
+    amount: 0,
+    description: "",
+    onSuccess: () => {},
+  });
 
   const handleAnalyze = async () => {
     if (!selectedFile) return;
@@ -55,16 +68,21 @@ export default function DataCollectorPage() {
     }
   };
 
+  // 🚨 Replaced fake alert with LivePay Modal Trigger
   const handlePayment = () => {
-    const isPaid = window.confirm("Redirecting to Mobile Money checkout for 10,000 UGX. Click OK to simulate successful payment.");
-    if (!isPaid) return;
-    
-    setShowPreview(false); // Close preview if open
-    setStep("success");
+    setPaymentState({
+      isActive: true,
+      amount: 10000, // 🚨 10,000 UGX per pricing criteria
+      description: "Deploy Digital Instrument Link & Analytics",
+      onSuccess: () => {
+        setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
+        setShowPreview(false); // Close preview if open
+        setStep("success"); // Triggers the live link UI
+      }
+    });
   };
 
   const finalLink = `etumo.com/collect/${analysisData?.instrumentId || "demo"}`;
-
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(`https://${finalLink}`);
@@ -74,6 +92,16 @@ export default function DataCollectorPage() {
 
   return (
     <div className="min-h-[85vh] flex flex-col items-center justify-center p-4 sm:p-8 bg-blue-50 overflow-hidden relative">
+
+      {/* 🚨 Universal Payment Modal Integration */}
+      {paymentState.isActive && (
+        <PaymentModal
+          amount={paymentState.amount}
+          description={paymentState.description}
+          onSuccess={paymentState.onSuccess}
+          onCancel={() => setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} })}
+        />
+      )}
 
       {/* Background aesthetics */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden flex justify-center items-center">
