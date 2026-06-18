@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { auth, db } from "@/lib/firebase";
+import { onAuthStateChanged, User } from "firebase/auth";
+import { doc, updateDoc } from "firebase/firestore";
 import LockedDocumentViewer from "@/components/LockedDocumentViewer";
-import PaymentModal from "@/components/PaymentModal"; // 🚨 Imported LivePay Modal
+import PaymentModal from "@/components/PaymentModal";
 
 interface AnalysisData {
   questionCount: number;
@@ -13,6 +17,9 @@ interface AnalysisData {
 }
 
 export default function DataCollectorPage() {
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+  
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [step, setStep] = useState<"upload" | "analyzing" | "checkout" | "success">("upload");
   const [copyFeedback, setCopyFeedback] = useState(false);
@@ -21,7 +28,6 @@ export default function DataCollectorPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
 
-  // 🚨 Universal Payment State
   const [paymentState, setPaymentState] = useState<{
     isActive: boolean;
     amount: number;
@@ -33,6 +39,14 @@ export default function DataCollectorPage() {
     description: "",
     onSuccess: () => {},
   });
+
+  // 🚨 Track the logged-in user
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleAnalyze = async () => {
     if (!selectedFile) return;
@@ -50,9 +64,7 @@ export default function DataCollectorPage() {
 
       const data = await res.json();
 
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to analyze document.");
-      }
+      if (!res.ok) throw new Error(data.error || "Failed to analyze document.");
 
       setAnalysisData({
         questionCount: data.questionCount,
@@ -68,16 +80,36 @@ export default function DataCollectorPage() {
     }
   };
 
-  // 🚨 Replaced fake alert with LivePay Modal Trigger
   const handlePayment = () => {
+    // 🚨 LOGIN WALL: Stop them before payment if they aren't logged in
+    if (!user) {
+      alert("Please log in or create an account to deploy and track your instrument.");
+      // Redirect to your login page, and send them back here after
+      router.push("/login?redirect=/data-collector"); 
+      return;
+    }
+
     setPaymentState({
       isActive: true,
-      amount: 10000, // 🚨 10,000 UGX per pricing criteria
+      amount: 10000,
       description: "Deploy Digital Instrument Link & Analytics",
-      onSuccess: () => {
+      onSuccess: async () => {
         setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
-        setShowPreview(false); // Close preview if open
-        setStep("success"); // Triggers the live link UI
+        
+        // 🚨 OWNERSHIP LOCK: Tie the instrument to this user in Firebase
+        if (analysisData?.instrumentId && user) {
+          try {
+            await updateDoc(doc(db, "instruments", analysisData.instrumentId), {
+              userId: user.uid,
+              status: "active"
+            });
+          } catch (error) {
+            console.error("Failed to link instrument to user:", error);
+          }
+        }
+
+        setShowPreview(false); 
+        setStep("success"); 
       }
     });
   };
@@ -93,7 +125,6 @@ export default function DataCollectorPage() {
   return (
     <div className="min-h-[85vh] flex flex-col items-center justify-center p-4 sm:p-8 bg-blue-50 overflow-hidden relative">
 
-      {/* 🚨 Universal Payment Modal Integration */}
       {paymentState.isActive && (
         <PaymentModal
           amount={paymentState.amount}
@@ -111,7 +142,6 @@ export default function DataCollectorPage() {
 
       <div className="w-full max-w-2xl bg-white/90 backdrop-blur-xl border border-white shadow-2xl p-8 sm:p-12 relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-500 rounded-2xl">
 
-        {/* Header */}
         <div className="mb-8">
           <Link href="/workspace" className="text-xs font-bold text-gray-400 hover:text-black mb-4 inline-block uppercase tracking-widest transition-colors">&larr; Back to Workspace</Link>
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900 leading-tight">
@@ -207,9 +237,10 @@ export default function DataCollectorPage() {
               </button>
               <button 
                 onClick={handlePayment}
-                className="flex-1 bg-[#d97706] text-white font-extrabold py-4 rounded-xl uppercase text-xs tracking-widest hover:bg-[#b45309] transition-all shadow-lg hover:-translate-y-1"
+                className="flex-1 bg-[#d97706] text-white font-extrabold py-4 rounded-xl uppercase text-xs tracking-widest hover:bg-[#b45309] transition-all shadow-lg hover:-translate-y-1 flex items-center justify-center gap-2"
               >
-                Deploy Link (10,000 UGX)
+                {!user && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>}
+                {user ? "Deploy Link (10,000 UGX)" : "Log In to Deploy"}
               </button>
             </div>
           </div>
@@ -223,7 +254,7 @@ export default function DataCollectorPage() {
             </div>
 
             <h2 className="text-2xl font-bold text-gray-900 tracking-tight">System Online</h2>
-            <p className="text-gray-500 text-sm mb-8">Your digital instrument is live and ready to collect responses.</p>
+            <p className="text-gray-500 text-sm mb-8">Your digital instrument is live and bound to your account.</p>
 
             <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl flex items-center justify-between gap-4">
               <span className="text-sm font-mono font-bold text-gray-800 truncate px-2">
@@ -237,8 +268,8 @@ export default function DataCollectorPage() {
               </button>
             </div>
 
-            <Link href="/workspace" className="block mt-6 text-sm font-bold text-[#d97706] hover:text-[#b45309] uppercase tracking-widest transition-colors">
-              Return to Workspace
+            <Link href={`/data-collector/${analysisData?.instrumentId}`} className="block mt-6 text-sm font-bold text-[#d97706] hover:text-[#b45309] uppercase tracking-widest transition-colors">
+              Go to Analytics Dashboard &rarr;
             </Link>
           </div>
         )}
@@ -251,9 +282,10 @@ export default function DataCollectorPage() {
           <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 bg-gray-50 shrink-0 shadow-sm z-10">
             <button 
               onClick={handlePayment}
-              className="bg-[#d97706] text-white px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-[#b45309] transition-colors shadow-sm"
+              className="bg-[#d97706] text-white px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-[#b45309] transition-colors shadow-sm flex items-center gap-2"
             >
-              Deploy Link (10,000 UGX)
+              {!user && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>}
+              {user ? "Deploy Link (10,000 UGX)" : "Log In to Deploy"}
             </button>
             <button 
               onClick={() => setShowPreview(false)}
