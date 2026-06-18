@@ -26,47 +26,75 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     };
   }, []);
 
-  // Basic markdown parser for the preview (handles headings and page breaks for Full Doc view)
-  const formatContent = (text: string) => {
-    if (!text) return "Select a chapter from the left panel to load the document...";
-
+  // Format internal text (headings, bolding, paragraphs)
+  const formatText = (text: string) => {
     return text.split('\n').map((line, idx) => {
-      if (line.trim() === "[PAGE BREAK]") {
-        return <div key={idx} className="my-12 border-b-2 border-dashed border-gray-300 w-full relative">
-          <span className="absolute left-1/2 -translate-x-1/2 -top-2.5 bg-white px-4 text-xs font-bold uppercase tracking-widest text-gray-400">Page Break</span>
-        </div>;
+      const trimmedLine = line.trim();
+      if (!trimmedLine) return <br key={idx} />;
+      
+      // Handle H1 / Chapter Titles
+      if (trimmedLine.startsWith("# ")) {
+        return <h1 key={idx} className="text-2xl font-black mt-10 mb-6 text-center uppercase tracking-widest">{trimmedLine.replace("# ", "")}</h1>;
       }
-      if (line.startsWith("### ")) {
-        return <h3 key={idx} className="text-xl font-bold mt-8 mb-4 uppercase tracking-wider">{line.replace("### ", "")}</h3>;
+      // Handle H2
+      if (trimmedLine.startsWith("## ")) {
+        return <h2 key={idx} className="text-xl font-bold mt-8 mb-4">{trimmedLine.replace("## ", "")}</h2>;
       }
-      return <p key={idx} className="mb-4">{line}</p>;
+      // Handle H3
+      if (trimmedLine.startsWith("### ")) {
+        return <h3 key={idx} className="text-lg font-bold mt-6 mb-3">{trimmedLine.replace("### ", "")}</h3>;
+      }
+      
+      return <p key={idx} className="mb-4 text-[16px] leading-[2] text-justify">{line}</p>;
     });
   };
 
+  if (!content) {
+    return <div className="p-10 text-center text-gray-500 font-mono">Select a chapter to load the preview...</div>;
+  }
+
+  // 🚨 Split the entire document by the PAGE BREAK marker to create physical "Pages"
+  const pages = content.split("[PAGE BREAK]");
+
   return (
-    // 🚨 MAXIMUM SECURITY: Added `select-none` to block mouse highlighting completely
-    <div className="relative border-x border-b border-gray-300 p-10 sm:p-16 min-h-[800px] bg-white locked-document-viewer overflow-hidden shadow-sm select-none">
+    // Outer container simulates the gray background of Microsoft Word Print Layout
+    <div className="bg-gray-200 py-10 px-4 sm:px-10 overflow-y-auto locked-document-viewer select-none flex flex-col gap-8 items-center min-h-[80vh]">
 
-      {/* Embedded Security Watermark */}
-      <div 
-        className="absolute inset-0 pointer-events-none opacity-[0.15] flex items-center justify-center text-center z-0"
-        style={{ 
-          backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'400\' height=\'400\'><text x=\'50%\' y=\'50%\' font-family=\'sans-serif\' font-size=\'36\' font-weight=\'900\' fill=\'%23d97706\' text-anchor=\'middle\' transform=\'rotate(-45 200 200)\'>ETUMO.com</text></svg>")',
-          backgroundRepeat: 'repeat'
-        }}
-      ></div>
+      {pages.map((pageContent, index) => {
+        if (!pageContent.trim()) return null; // Skip empty pages
 
-      {/* The Actual Document Content - pointer-events-none prevents double-click highlighting */}
-      <div className="relative z-10 font-serif text-gray-800 text-[17px] leading-[2] text-justify max-w-3xl mx-auto pointer-events-none">
-        {formatContent(content)}
-      </div>
+        return (
+          // 🚨 Individual A4 Page Container
+          <div 
+            key={index} 
+            className="relative bg-white shadow-xl w-full max-w-[210mm] min-h-[297mm] px-[20mm] py-[25.4mm] pointer-events-none"
+          >
+            {/* Embedded Security Watermark per page */}
+            <div 
+              className="absolute inset-0 pointer-events-none opacity-[0.1] flex items-center justify-center text-center z-0 overflow-hidden"
+              style={{ 
+                backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'400\' height=\'400\'><text x=\'50%\' y=\'50%\' font-family=\'sans-serif\' font-size=\'36\' font-weight=\'900\' fill=\'%23d97706\' text-anchor=\'middle\' transform=\'rotate(-45 200 200)\'>ETUMO.com</text></svg>")',
+                backgroundRepeat: 'repeat'
+              }}
+            ></div>
 
-      {/* 🚨 MAXIMUM SECURITY: If they bypass JS and use browser 'File -> Print', the document blanks out */}
+            {/* The Actual Page Content */}
+            <div className="relative z-10 font-serif text-gray-900">
+              {formatText(pageContent)}
+            </div>
+
+            {/* Page Number (Visual only) */}
+            <div className="absolute bottom-[10mm] left-0 w-full text-center text-xs text-gray-400 font-serif">
+              {index + 1}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Print security lock */}
       <style dangerouslySetInnerHTML={{__html: `
         @media print {
-          body * {
-            visibility: hidden !important;
-          }
+          body * { visibility: hidden !important; }
           .locked-document-viewer::after {
             content: "UNAUTHORIZED PRINT ATTEMPT - Please pay to export this document officially on Etumo.com";
             visibility: visible !important;
@@ -82,7 +110,6 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
           }
         }
       `}} />
-
     </div>
   );
 }
