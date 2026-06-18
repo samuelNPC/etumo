@@ -7,7 +7,7 @@ import { db, auth } from "@/lib/firebase";
 import { doc, getDoc, collection, addDoc, setDoc } from "firebase/firestore";
 import LockedDocumentViewer from "@/components/LockedDocumentViewer";
 import GuidelineUploader from "@/components/GuidelineUploader";
-import PaymentModal from "@/components/PaymentModal"; // 🚨 Imported LivePay Modal
+import PaymentModal from "@/components/PaymentModal";
 
 interface ChapterStructure {
   key: string;
@@ -19,7 +19,7 @@ interface ProjectData {
   course: string;
   faculty: string;
   progress: number;
-  freeEditsUsed?: number; // 🚨 Added to track the 2 Free Supervisor Corrections
+  freeEditsUsed?: number; 
   guidelines?: {
     isCustomized: boolean;
     formattingRules: string;
@@ -38,9 +38,8 @@ const defaultStructure: ChapterStructure[] = [
   { key: "chapter3", label: "5. Methodology" },
   { key: "chapter4", label: "6. Data Presentation" },
   { key: "chapter5", label: "7. Conclusion" },
-  { key: "appendices", label: "8. Appendices (Instruments & Budget)" }, // 🚨 Natively handled here
+  { key: "appendices", label: "8. Appendices (Instruments & Budget)" }, 
 ];
-
 
 const generationQuotes = [
   "Synthesizing academic literature...",
@@ -63,6 +62,10 @@ function WorkspaceContent() {
   const [generatingKey, setGeneratingKey] = useState<string | null>(null);
   const [previewChapter, setPreviewChapter] = useState<string | null>(null);
 
+  // 🚨 High Traffic Retry States
+  const [trafficErrorLevel, setTrafficErrorLevel] = useState<0 | 1 | 2>(0);
+  const [failedChapterKey, setFailedChapterKey] = useState<string | null>(null);
+
   const [lockedPopup, setLockedPopup] = useState<boolean>(false);
   const [quoteIndex, setQuoteIndex] = useState(0);
 
@@ -75,7 +78,7 @@ function WorkspaceContent() {
   const [feedbackText, setFeedbackText] = useState<string>("");
   const [applyingCorrection, setApplyingCorrection] = useState<boolean>(false);
 
-  // 🚨 Universal Payment State
+  // Universal Payment State
   const [paymentState, setPaymentState] = useState<{
     isActive: boolean;
     amount: number;
@@ -138,7 +141,7 @@ function WorkspaceContent() {
         course: course || "General",
         faculty: "General",
         progress: 10,
-        freeEditsUsed: 0, // Initialize edits
+        freeEditsUsed: 0, 
         content: {},
         userId: auth.currentUser?.uid || "anonymous", 
         createdAt: new Date().toISOString(),
@@ -166,6 +169,7 @@ function WorkspaceContent() {
   const handleGenerateChapter = async (chapterKey: string) => {
     if (!projectId) return;
     setGeneratingKey(chapterKey);
+    setFailedChapterKey(null); // Reset previous failures on new attempt
     setQuoteIndex(0); 
 
     try {
@@ -176,6 +180,22 @@ function WorkspaceContent() {
       });
 
       const data = await res.json();
+
+      if (!res.ok) {
+        // 🚨 HIGH TRAFFIC RETRY LOGIC
+        if (res.status === 503 || data.code === "HIGH_TRAFFIC") {
+          setFailedChapterKey(chapterKey);
+          if (trafficErrorLevel === 0) {
+            setTrafficErrorLevel(1);
+            throw new Error("TRAFFIC_STRIKE_1");
+          } else {
+            setTrafficErrorLevel(2);
+            throw new Error("TRAFFIC_STRIKE_2");
+          }
+        }
+        throw new Error(data.error || "Failed to generate chapter.");
+      }
+
       if (data.chapterContent) {
         const cleanContent = data.chapterContent.replace(/\*/g, "");
 
@@ -187,18 +207,21 @@ function WorkspaceContent() {
             content: { ...prev.content, [chapterKey]: cleanContent },
           };
         });
+        
+        // Reset errors on success
+        setTrafficErrorLevel(0);
+        setFailedChapterKey(null);
         setPreviewChapter(chapterKey);
-      } else {
-        alert(data.error || "Failed to generate chapter.");
       }
-    } catch (err) {
-      alert("Error processing generation pipeline.");
+    } catch (err: any) {
+      if (err.message !== "TRAFFIC_STRIKE_1" && err.message !== "TRAFFIC_STRIKE_2") {
+        alert("Error processing generation pipeline: " + err.message);
+      }
     } finally {
       setGeneratingKey(null);
     }
   };
 
-  // 🚨 1. LIVEPAY: Single Chapter & Preliminary Pages
   const handleDownloadSingle = (chapterKey: string) => {
     if (!projectId) return;
 
@@ -242,7 +265,6 @@ function WorkspaceContent() {
     }
   };
 
-  // 🚨 2. LIVEPAY: Full Document Download
   const handleDownloadFullDocument = () => {
     if (!projectId) return;
     
@@ -280,13 +302,12 @@ function WorkspaceContent() {
     }
   };
 
-  // 🚨 3. LIVEPAY: Supervisor Corrections Logic
   const editsUsed = project?.freeEditsUsed || 0;
   const editsRemaining = Math.max(2 - editsUsed, 0);
 
   const handleApplyCorrection = () => {
     if (editsRemaining > 0) {
-      executeCorrection(); // Process for free
+      executeCorrection(); 
     } else {
       setPaymentState({
         isActive: true,
@@ -305,7 +326,6 @@ function WorkspaceContent() {
     setApplyingCorrection(true);
 
     try {
-      // Calls your generation endpoint, passing feedback for the rewrite
       const res = await fetch("/api/chapters", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -317,7 +337,6 @@ function WorkspaceContent() {
         const cleanContent = data.chapterContent.replace(/\*/g, "");
         const newEditsUsed = editsUsed + 1;
 
-        // Update local state and Firebase
         setProject(prev => prev ? { 
           ...prev, 
           freeEditsUsed: newEditsUsed, 
@@ -406,7 +425,6 @@ function WorkspaceContent() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 pb-24 relative">
 
-      {/* 🚨 Universal Payment Modal Integration */}
       {paymentState.isActive && (
         <PaymentModal
           amount={paymentState.amount}
@@ -488,6 +506,7 @@ function WorkspaceContent() {
           }
 
           const isCurrentlyGenerating = generatingKey === chapter.key;
+          const hasTrafficError = failedChapterKey === chapter.key && trafficErrorLevel > 0;
 
           return (
             <div key={chapter.key} className={`border rounded-2xl overflow-hidden transition-all duration-300 flex flex-col ${bgClass}`}>
@@ -544,12 +563,49 @@ function WorkspaceContent() {
                 </div>
               </div>
 
+              {/* GENERATION LOADING STATE */}
               {isCurrentlyGenerating && (
                 <div className="bg-orange-100/50 border-t border-orange-200 px-6 py-3 flex items-center gap-3 animate-in fade-in duration-300">
                   <div className="w-4 h-4 border-2 border-[#d97706] border-t-transparent rounded-full animate-spin shrink-0" />
                   <span className="text-xs font-mono text-[#d97706] uppercase tracking-widest animate-pulse font-bold">
                     {generationQuotes[quoteIndex]}
                   </span>
+                </div>
+              )}
+
+              {/* 🚨 HIGH TRAFFIC RETRY UI */}
+              {hasTrafficError && (
+                <div className="bg-orange-50 border-t border-orange-200 px-6 py-4 flex flex-col items-center justify-center text-center animate-in slide-in-from-top-2 duration-300">
+                  {trafficErrorLevel === 1 && (
+                    <>
+                      <p className="text-orange-800 text-sm font-bold mb-3">
+                        Our System is currently facing high traffic.
+                      </p>
+                      <button 
+                        onClick={() => handleGenerateChapter(chapter.key)}
+                        className="bg-[#d97706] text-white px-6 py-2 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-[#b45309] transition-colors shadow-sm"
+                      >
+                        Retry Generation
+                      </button>
+                    </>
+                  )}
+
+                  {trafficErrorLevel === 2 && (
+                    <>
+                      <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center mb-2">
+                        <span className="text-orange-600 text-lg">⏳</span>
+                      </div>
+                      <p className="text-orange-800 text-sm font-bold mb-3 max-w-sm">
+                        We are still facing high traffic. Please try again after a few seconds.
+                      </p>
+                      <button 
+                        onClick={() => handleGenerateChapter(chapter.key)}
+                        className="text-xs font-bold text-[#d97706] uppercase tracking-widest hover:underline"
+                      >
+                        Try Again Now
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -591,7 +647,6 @@ function WorkspaceContent() {
         </Link>
       </div>
 
-      {/* EDGE-TO-EDGE PREVIEW POPUP MODAL */}
       {previewChapter && (previewChapter === "FULL_DOCUMENT" ? fullDocumentContent : project.content[previewChapter]) && (
         <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300">
 
@@ -618,7 +673,6 @@ function WorkspaceContent() {
                 <LockedDocumentViewer content={previewChapter === "FULL_DOCUMENT" ? fullDocumentContent : project.content[previewChapter]} />
               </div>
 
-              {/* 🚨 THE SUPERVISOR CORRECTIONS PANEL */}
               {previewChapter !== "FULL_DOCUMENT" && (
                 <div className="border-t border-gray-200 bg-white p-6 sm:p-10">
                   <div className="max-w-3xl mx-auto">
@@ -637,7 +691,6 @@ function WorkspaceContent() {
                             <p className="text-xs text-gray-500 mt-1">The AI will rewrite this chapter to reflect the feedback perfectly.</p>
                           </div>
                           
-                          {/* Dynamic Badge for Free Edits */}
                           <span className={`${editsRemaining > 0 ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-orange-50 text-orange-700 border-orange-200"} border text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest`}>
                             {editsRemaining > 0 ? `${editsRemaining} Free Edits Left` : "5,000 UGX / Edit"}
                           </span>
