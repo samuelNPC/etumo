@@ -1,8 +1,57 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-// Using the Pro model for the highest quality paraphrasing and structural disruption
+// Initialize AI without binding a specific model globally
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+
+// Utility to pause execution for backoff
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// --- THE RESILIENCY ENGINE (CONCURRENT CHUNK PROCESSING) ---
+async function remediateChunkWithResiliency(prompt: string, temperature: number) {
+  // CASCADE: Quality First (3.1 Pro), Speed Second (3.5 Flash), Legacy Last (2.5 Pro)
+  const cascade = ["gemini-3.1-pro", "gemini-3.5-flash", "gemini-2.5-pro"];
+  const MAX_RETRIES_PER_MODEL = 2; 
+
+  for (let i = 0; i < cascade.length; i++) {
+    const currentModelName = cascade[i];
+    
+    // Inject the dynamic temperature into the model configuration for this specific attempt
+    const model = genAI.getGenerativeModel({ 
+      model: currentModelName,
+      generationConfig: { temperature } 
+    });
+
+    for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
+      try {
+        console.log(`[Chunk Rewrite - Attempt ${attempt}] Sending request to ${currentModelName} (Temp: ${temperature})...`);
+        return await model.generateContent(prompt);
+      } catch (error: any) {
+        // Detect 503 Service Unavailable or High Demand errors
+        const isTrafficError = 
+          error.status === 503 || 
+          error.message?.includes("503") || 
+          error.message?.includes("high demand");
+        
+        if (isTrafficError) {
+          if (attempt < MAX_RETRIES_PER_MODEL) {
+            const delay = 1000 * attempt; 
+            console.warn(`Traffic spike on ${currentModelName}. Retrying chunk in ${delay}ms...`);
+            await sleep(delay);
+          } else {
+            console.warn(`Exhausted retries for ${currentModelName}. Cascading chunk to next model.`);
+            break; // Move to the next model in the cascade array
+          }
+        } else {
+          // If it's a 400 Bad Request, context limit, or API key issue, throw immediately
+          throw error; 
+        }
+      }
+    }
+  }
+  
+  throw new Error("ALL_MODELS_EXHAUSTED");
+}
 
 export async function POST(req: Request) {
   try {
@@ -15,10 +64,6 @@ export async function POST(req: Request) {
     // Determine the model parameters based on the bypass type
     // AI bypass needs high temperature (unpredictability). Plagiarism bypass needs lower temperature (accuracy & citation preservation).
     const temperature = type === "ai_bypass" ? 0.85 : 0.4;
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.5-pro",
-      generationConfig: { temperature } 
-    });
 
     // We process the array of flagged strings concurrently to speed up the response
     const rewritePromises = flaggedTexts.map(async (text) => {
@@ -55,7 +100,8 @@ export async function POST(req: Request) {
           `;
         }
 
-        const result = await model.generateContent(prompt);
+        // Process this specific chunk via our universal resiliency cascade
+        const result = await remediateChunkWithResiliency(prompt, temperature);
         let rewrittenText = result.response.text().trim();
 
         // 🚨 SAFETY CLEANUP: Safely strips out markdown blocks using RegExp to prevent Vercel build errors
@@ -68,8 +114,9 @@ export async function POST(req: Request) {
           rewritten: rewrittenText
         };
       } catch (innerError) {
-        console.error("Error rewriting a specific chunk:", innerError);
-        // Failsafe: If a single chunk errors out (e.g., rate limit), return the original text so the whole array doesn't crash
+        console.error("Error rewriting a specific chunk, gracefully degrading:", innerError);
+        // Failsafe: If a single chunk completely exhausts the cascade, return the original text 
+        // instead of crashing the entire Promise.all array.
         return {
           original: text,
           rewritten: text 
