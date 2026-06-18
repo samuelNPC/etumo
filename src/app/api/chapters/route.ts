@@ -3,9 +3,8 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 
-// Upgraded to the maximum quality Pro model for production!
+// Initialize AI (Do not bind a default model globally anymore)
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
 // Fallback structure in case guidelines weren't uploaded
 const defaultStructure = [
@@ -17,6 +16,54 @@ const defaultStructure = [
   { key: "chapter4", label: "6. Data Presentation" },
   { key: "chapter5", label: "7. Conclusion" },
 ];
+
+// Utility to pause execution for backoff
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// --- THE RESILIENCY ENGINE (QUALITY FIRST) ---
+async function generateWithResiliency(prompt: string) {
+  // NEW CASCADE: Quality First (3.1 Pro), Speed Second (3.5 Flash), Legacy Last (2.5 Pro)
+  const cascade = ["gemini-3.1-pro", "gemini-3.5-flash", "gemini-2.5-pro"];
+  
+  // Limit to 2 retries per model to prevent Next.js Serverless Function Timeouts (504 errors)
+  const MAX_RETRIES_PER_MODEL = 2; 
+
+  for (let i = 0; i < cascade.length; i++) {
+    const currentModelName = cascade[i];
+    const model = genAI.getGenerativeModel({ model: currentModelName });
+
+    for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
+      try {
+        console.log(`[Attempt ${attempt}] Sending request to ${currentModelName}...`);
+        return await model.generateContent(prompt);
+      } catch (error: any) {
+        // Detect 503 Service Unavailable or High Demand errors
+        const isTrafficError = 
+          error.status === 503 || 
+          error.message?.includes("503") || 
+          error.message?.includes("high demand");
+        
+        if (isTrafficError) {
+          if (attempt < MAX_RETRIES_PER_MODEL) {
+            // Wait 1 second on the first fail, then retry
+            const delay = 1000 * attempt; 
+            console.warn(`Traffic spike on ${currentModelName}. Retrying in ${delay}ms...`);
+            await sleep(delay);
+          } else {
+            console.warn(`Exhausted retries for ${currentModelName}. Cascading to next model.`);
+            break; // Breaks the inner loop, moving to the next model in the cascade array
+          }
+        } else {
+          // If it's a 400 Bad Request, API key issue, or context limit hit, throw it immediately
+          throw error; 
+        }
+      }
+    }
+  }
+  
+  // If the code reaches this point, all 3 models failed and Google's entire network is struggling
+  throw new Error("ALL_MODELS_EXHAUSTED");
+}
 
 export async function POST(req: Request) {
   try {
@@ -59,7 +106,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4. The Master Unified Prompt (Strict Academic Paragraph & Table Guardrails Added)
+    // 4. The Master Unified Prompt 
     const prompt = `
       You are an expert academic research writer drafting a final-year university project.
       
@@ -84,15 +131,15 @@ export async function POST(req: Request) {
       13. PLACEHOLDERS: Use standard brackets like [Student Name] or [University Name] where specific personal data is missing.
     `;
 
-    // 5. Generate the Chapter
-    const result = await model.generateContent(prompt);
+    // 5. Generate the Chapter using the Resilient Fallback Engine
+    const result = await generateWithResiliency(prompt);
     let generatedText = result.response.text().trim();
 
     // 6. Safety Cleanup: Strip out conversational intro phrases
     generatedText = generatedText.replace(/```(md|markdown|html)?/gi, "").replace(/```/g, "").trim();
     generatedText = generatedText.replace(/^(Here is|Sure|Certainly).*?\n/i, "").trim();
 
-    // 🚨 Strict Markdown Cleanup: Removes stray asterisks to enforce clean text, but leaves table pipes (|) intact
+    // Strict Markdown Cleanup: Removes stray asterisks to enforce clean text, but leaves table pipes (|) intact
     generatedText = generatedText.replace(/\*/g, ""); 
 
     // 7. Auto-Save back to Firestore & Update Progress
@@ -106,22 +153,18 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error("Error generating chapter:", error);
 
-    // 🚨 CATCH GEMINI HIGH TRAFFIC / 503 ERRORS
-    if (
-      error.status === 503 || 
-      (error.message && error.message.includes("503")) ||
-      (error.message && error.message.includes("high demand"))
-    ) {
+    // CATCH THE CUSTOM CASCADE FAILURE
+    if (error.message === "ALL_MODELS_EXHAUSTED") {
       return NextResponse.json(
         { 
           code: "HIGH_TRAFFIC", 
-          error: "Our System is currently facing high traffic." 
+          error: "Our System is currently facing exceptionally high traffic. Please try again in a few minutes." 
         }, 
         { status: 503 }
       );
     }
 
-    // Default fallback for any other errors
+    // Default fallback for Firebase errors or bad requests
     return NextResponse.json({ error: "Failed to generate chapter" }, { status: 500 });
   }
 }
