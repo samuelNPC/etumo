@@ -35,7 +35,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
       // Safety catch: completely hide any stray markdown dividers that sneak through
       if (trimmedLine === "---" || trimmedLine === "***") return null;
 
-      // Handle H1 / Chapter Titles & Preliminary Pages
+      // Handle H1 / Chapter Titles
       if (trimmedLine.startsWith("# ")) {
         return <h1 key={idx} className="text-xl md:text-2xl font-black mt-0 mb-6 md:mb-8 text-center uppercase tracking-widest">{trimmedLine.replace("# ", "")}</h1>;
       }
@@ -71,10 +71,16 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     return <div className="p-10 text-center text-gray-500 font-mono">Select a chapter to load the preview...</div>;
   }
 
+  // 🚨 CLEANUP FILTER: Strip out meta-headings before processing
+  // This removes lines that are exactly "PRELIMINARY PAGES" or "APPENDICES" (with or without #)
+  const cleanContent = content
+    .replace(/^(#\s*)?PRELIMINARY PAGES$/gim, '')
+    .replace(/^(#\s*)?APPENDICES$/gim, '');
+
   // 🚨 ENHANCED AUTO-PAGINATION ENGINE
-  const pages = content
+  const pages = cleanContent
     .replace(/\[PAGE BREAK\]/gi, '___PAGE_BREAK___') 
-    .replace(/\n\s*---\s*\n/g, '\n___PAGE_BREAK___\n') // Catches the --- markdown dividers from the AI
+    .replace(/\n\s*---\s*\n/g, '\n___PAGE_BREAK___\n') // Catches the --- markdown dividers
     .replace(/\n# /g, '\n___PAGE_BREAK___\n# ') 
     .replace(/^# /, '___PAGE_BREAK___\n# ') 
     .split('___PAGE_BREAK___')
@@ -87,7 +93,6 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
       {pages.map((pageContent, index) => {
         return (
           // 🚨 RESPONSIVE A4 PAGE CONTAINER
-          // Mobile: px-6 (comfortable reading). Desktop: px-[25.4mm] (strict 1-inch physical margin)
           <div 
             key={index} 
             className="relative bg-white shadow-xl w-full max-w-[210mm] min-h-[297mm] px-6 py-10 md:px-[25.4mm] md:py-[25.4mm] pointer-events-none"
