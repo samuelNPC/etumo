@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { 
   createUserWithEmailAndPassword, 
@@ -18,6 +19,9 @@ interface AuthModalProps {
 }
 
 export default function AuthModal({ isOpen, onClose, onSuccess, initializing }: AuthModalProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  
   const [mode, setMode] = useState<"login" | "signup" | "forgot" | "ready">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -80,10 +84,23 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initializing }: 
     }
   };
 
+  // 🚨 SMART ROUTING: Decides where to send the user after login
+  const handleReadyToContinue = () => {
+    const redirectPath = searchParams?.get("redirect");
+
+    if (redirectPath) {
+      // If they came from a specific page (like Data Collector), send them exactly back there
+      router.push(redirectPath);
+    } else {
+      // If they are on the homepage creating a project, trigger the parent component's Workspace creation
+      onSuccess();
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4 backdrop-blur-sm">
-      <div className="bg-white border border-gray-300 max-w-md w-full p-8 shadow-2xl relative">
-        
+      <div className="bg-white border border-gray-300 max-w-md w-full p-8 shadow-2xl relative animate-in zoom-in-95 duration-200">
+
         {mode !== "ready" ? (
           <>
             <h2 className="text-2xl font-bold tracking-tight text-gray-900 mb-2">
@@ -107,7 +124,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initializing }: 
                 {successMsg}
               </div>
             )}
-            
+
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <input
                 type="email"
@@ -117,7 +134,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initializing }: 
                 className="border border-gray-300 p-3 w-full outline-none focus:border-black rounded-none"
                 required
               />
-              
+
               {mode !== "forgot" && (
                 <input
                   type="password"
@@ -146,9 +163,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initializing }: 
                   <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Or</span>
                   <hr className="flex-1 border-gray-300" />
                 </div>
-                
+
                 <button
-                  type="button" // Important: prevents triggering the form submit
+                  type="button" 
                   onClick={handleGoogleLogin}
                   disabled={loading}
                   className="w-full border border-gray-300 bg-white text-black font-bold p-3 uppercase text-sm tracking-wider hover:bg-gray-50 flex items-center justify-center gap-3 transition-colors disabled:bg-gray-200"
@@ -187,7 +204,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initializing }: 
                 </button>
               )}
             </div>
-            
+
             <button 
               onClick={onClose}
               className="absolute top-4 right-4 text-gray-400 hover:text-black font-bold p-2 transition-colors"
@@ -201,18 +218,18 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initializing }: 
               <span className="text-green-600 text-2xl font-bold">✓</span>
             </div>
             <h2 className="text-2xl font-bold tracking-tight text-gray-900 mb-2">Account Secured</h2>
-            <p className="text-sm text-gray-500 mb-8">Your session is active and your topic is saved.</p>
-            
+            <p className="text-sm text-gray-500 mb-8">Your session is active.</p>
+
             <button
-              onClick={onSuccess}
+              onClick={handleReadyToContinue}
               disabled={initializing}
-              className="w-full bg-[#d97706] text-white font-bold py-4 uppercase text-sm tracking-wider hover:bg-[#b45309] transition-colors rounded-none disabled:bg-gray-400"
+              className="w-full bg-[#d97706] text-white font-bold py-4 uppercase text-sm tracking-wider hover:bg-[#b45309] transition-colors rounded-none disabled:bg-gray-400 shadow-md"
             >
-              {initializing ? "Configuring OS..." : "Ready to Continue?"}
+              {initializing ? "Configuring Database..." : "Ready to Continue?"}
             </button>
           </div>
         )}
-        
+
       </div>
     </div>
   );
