@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { db, auth } from "@/lib/firebase";
 
 interface InstrumentData {
   questionCount: number;
   sectionCount: number;
   previewText: string;
+  userId?: string;
 }
 
 interface ResponseData {
@@ -26,13 +28,33 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
   const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    // 🚨 Wrap the fetch in an auth listener to prevent false kick-outs on hard refresh
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        alert("Please log in to view this dashboard.");
+        window.location.href = `/login?redirect=/data-collector/${params.id}`;
+        return;
+      }
+
       try {
         // 1. Fetch the Instrument Info
         const docRef = doc(db, "instruments", params.id);
         const docSnap = await getDoc(docRef);
+        
         if (docSnap.exists()) {
-          setInstrument(docSnap.data() as InstrumentData);
+          const data = docSnap.data();
+          
+          // 🚨 SECURITY LOCK: Kick them out if they don't own it
+          if (data.userId && data.userId !== user.uid) {
+            alert("Unauthorized: You do not own this research instrument.");
+            window.location.href = "/data-collector";
+            return;
+          }
+          
+          setInstrument(data as InstrumentData);
+        } else {
+          setLoading(false);
+          return; // Document doesn't exist
         }
 
         // 2. Fetch all Responses linked to this Instrument
@@ -53,9 +75,9 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
       } finally {
         setLoading(false);
       }
-    };
+    });
 
-    fetchDashboardData();
+    return () => unsubscribe();
   }, [params.id]);
 
   const handleGenerateSummary = async () => {
@@ -126,7 +148,20 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
     );
   }
 
-  if (!instrument) return <div className="text-center p-20 font-bold">Dashboard not found.</div>;
+  if (!instrument) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+        <div className="bg-white p-10 border border-gray-200 rounded-xl shadow-sm text-center max-w-md w-full">
+          <span className="text-4xl mb-4 block">⚠️</span>
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Dashboard Not Found</h1>
+          <p className="text-sm text-gray-500 mb-6">This instrument does not exist or has been removed.</p>
+          <Link href="/data-collector" className="bg-black text-white px-6 py-3 text-xs font-bold uppercase tracking-widest rounded-lg hover:bg-gray-800 transition-colors">
+            Return to Tools
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-8 mt-4 animate-in fade-in duration-500">
