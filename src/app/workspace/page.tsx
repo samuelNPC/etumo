@@ -9,16 +9,25 @@ import LockedDocumentViewer from "@/components/LockedDocumentViewer";
 import GuidelineUploader from "@/components/GuidelineUploader";
 import PaymentModal from "@/components/PaymentModal";
 
-interface ChapterStructure { key: string; label: string; }
+interface ChapterStructure {
+  key: string;
+  label: string;
+}
+
 interface ProjectData {
-  topic: string; 
-  course: string; 
-  faculty: string; 
-  progress: number; 
-  freeEditsUsed?: number;
-  guidelines?: { isCustomized: boolean; formattingRules: string; structure: ChapterStructure[]; };
-  // 🚨 AST ARCHITECTURE: Content is now an object containing arrays of blocks
-  content: { [key: string]: any[] }; 
+  topic: string;
+  course: string;
+  faculty: string;
+  progress: number;
+  freeEditsUsed?: number; 
+  guidelines?: {
+    isCustomized: boolean;
+    formattingRules: string;
+    structure: ChapterStructure[];
+  };
+  content: {
+    [key: string]: string;
+  };
 }
 
 const defaultStructure: ChapterStructure[] = [
@@ -65,7 +74,6 @@ function WorkspaceContent() {
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
 
-  // Supervisor Feedback States
   const [showFeedbackPanel, setShowFeedbackPanel] = useState<boolean>(false);
   const [feedbackText, setFeedbackText] = useState<string>("");
   const [applyingCorrection, setApplyingCorrection] = useState<boolean>(false);
@@ -114,6 +122,13 @@ function WorkspaceContent() {
     return () => clearInterval(interval);
   }, [generatingKey]);
 
+  const handleGuidelinesComplete = async () => {
+    if (!projectId) return;
+    const docRef = doc(db, "projects", projectId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) setProject(docSnap.data() as ProjectData);
+  };
+
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customTopic.trim()) return;
@@ -146,17 +161,15 @@ function WorkspaceContent() {
     (c) => c.key !== "guidelines" && !generatedChapters.includes(c.key)
   );
 
-  // 🚨 AST ARCHITECTURE: Stitching JSON Arrays instead of Markdown strings
-  let fullDocumentBlocks: any[] = [];
-  currentStructure.filter(c => c.key !== "guidelines" && project?.content[c.key]).forEach((c, index) => {
-      if (index > 0) fullDocumentBlocks.push({ type: 'page-break', text: '' });
-      fullDocumentBlocks = fullDocumentBlocks.concat(project?.content[c.key] || []);
-  });
+  const fullDocumentContent = currentStructure
+    .filter(c => c.key !== "guidelines" && project?.content[c.key])
+    .map(c => `### ${c.label.toUpperCase()}\n\n${project?.content[c.key]}`)
+    .join("\n\n\n[PAGE BREAK]\n\n\n");
 
   const handleGenerateChapter = async (chapterKey: string) => {
     if (!projectId) return;
     setGeneratingKey(chapterKey);
-    setFailedChapterKey(null);
+    setFailedChapterKey(null); // Reset previous failures on new attempt
     setQuoteIndex(0); 
 
     try {
@@ -169,6 +182,7 @@ function WorkspaceContent() {
       const data = await res.json();
 
       if (!res.ok) {
+        // 🚨 HIGH TRAFFIC RETRY LOGIC
         if (res.status === 503 || data.code === "HIGH_TRAFFIC") {
           setFailedChapterKey(chapterKey);
           if (trafficErrorLevel === 0) {
@@ -183,15 +197,18 @@ function WorkspaceContent() {
       }
 
       if (data.chapterContent) {
+        const cleanContent = data.chapterContent.replace(/\*/g, "");
+
         setProject((prev) => {
           if (!prev) return null;
           return {
             ...prev,
             progress: Math.min(prev.progress + 15, 100),
-            content: { ...prev.content, [chapterKey]: data.chapterContent },
+            content: { ...prev.content, [chapterKey]: cleanContent },
           };
         });
-
+        
+        // Reset errors on success
         setTrafficErrorLevel(0);
         setFailedChapterKey(null);
         setPreviewChapter(chapterKey);
@@ -207,6 +224,7 @@ function WorkspaceContent() {
 
   const handleDownloadSingle = (chapterKey: string) => {
     if (!projectId) return;
+
     const isPrelim = chapterKey.toLowerCase().includes("preliminary");
     const price = isPrelim ? 5000 : 10000;
     const documentType = isPrelim ? "Preliminary Pages" : "Chapter";
@@ -217,30 +235,17 @@ function WorkspaceContent() {
       description: `Unlock ${documentType} Download`,
       onSuccess: () => {
         setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
-        executeDownload(false, chapterKey);
+        executeSingleDownload(chapterKey);
       }
     });
   };
 
-  const handleDownloadFullDocument = () => {
-    if (!projectId) return;
-    setPaymentState({
-      isActive: true,
-      amount: 50000,
-      description: "Unlock Complete Research Document",
-      onSuccess: () => {
-        setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
-        executeDownload(true, "full");
-      }
-    });
-  };
-
-  const executeDownload = async (isFull: boolean, chapterKey: string) => {
+  const executeSingleDownload = async (chapterKey: string) => {
     try {
       const res = await fetch("/api/compile-document", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, chapterKey, isFullDocument: isFull, structure: currentStructure }),
+        body: JSON.stringify({ projectId, chapterKey, structure: currentStructure }),
       });
 
       if (!res.ok) throw new Error("Export failed");
@@ -250,7 +255,7 @@ function WorkspaceContent() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = isFull ? `${project?.topic.substring(0, 30).replace(/\s+/g, "_")}_Complete.docx` : `${currentLabel.replace(/\s+/g, "_")}.docx`;
+      a.download = `${currentLabel.replace(/\s+/g, "_")}.docx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -260,7 +265,43 @@ function WorkspaceContent() {
     }
   };
 
-  // Supervisor Feedback Logic
+  const handleDownloadFullDocument = () => {
+    if (!projectId) return;
+    
+    setPaymentState({
+      isActive: true,
+      amount: 50000,
+      description: "Unlock Complete Research Document",
+      onSuccess: () => {
+        setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
+        executeFullDownload();
+      }
+    });
+  };
+
+  const executeFullDownload = async () => {
+    try {
+      const res = await fetch("/api/compile-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, chapterKey: "full", isFullDocument: true, structure: currentStructure }),
+      });
+
+      if (!res.ok) throw new Error("Full export failed");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${project?.topic.substring(0, 30).replace(/\s+/g, "_")}_Complete_Research.docx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (error) {
+      alert("Error compiling full document.");
+    }
+  };
+
   const editsUsed = project?.freeEditsUsed || 0;
   const editsRemaining = Math.max(2 - editsUsed, 0);
 
@@ -293,16 +334,17 @@ function WorkspaceContent() {
 
       const data = await res.json();
       if (data.chapterContent) {
+        const cleanContent = data.chapterContent.replace(/\*/g, "");
         const newEditsUsed = editsUsed + 1;
 
         setProject(prev => prev ? { 
           ...prev, 
           freeEditsUsed: newEditsUsed, 
-          content: { ...prev.content, [previewChapter]: data.chapterContent } 
+          content: { ...prev.content, [previewChapter]: cleanContent } 
         } : null);
 
         await setDoc(doc(db, "projects", projectId), {
-          [`content.${previewChapter}`]: data.chapterContent,
+          [`content.${previewChapter}`]: cleanContent,
           freeEditsUsed: newEditsUsed
         }, { merge: true });
 
@@ -324,7 +366,6 @@ function WorkspaceContent() {
     setFeedbackText("");
   };
 
-  // UI RENDERING
   if (loading) {
     return (
       <div className="h-[80vh] flex flex-col items-center justify-center">
@@ -385,7 +426,12 @@ function WorkspaceContent() {
     <div className="max-w-4xl mx-auto px-4 py-8 pb-24 relative">
 
       {paymentState.isActive && (
-        <PaymentModal amount={paymentState.amount} description={paymentState.description} onSuccess={paymentState.onSuccess} onCancel={() => setPaymentState({ ...paymentState, isActive: false })} />
+        <PaymentModal
+          amount={paymentState.amount}
+          description={paymentState.description}
+          onSuccess={paymentState.onSuccess}
+          onCancel={() => setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} })}
+        />
       )}
 
       {lockedPopup && (
@@ -492,7 +538,7 @@ function WorkspaceContent() {
                     isGuidelinesUploaded ? (
                       <span className="text-xs font-bold text-green-600 border border-green-200 bg-white px-3 py-2 rounded-lg">Learned ✓</span>
                     ) : (
-                      <GuidelineUploader projectId={projectId as string} onComplete={() => window.location.reload()} />
+                      <GuidelineUploader projectId={projectId as string} onComplete={handleGuidelinesComplete} />
                     )
                   ) : isGenerated ? (
                     <button 
@@ -517,6 +563,7 @@ function WorkspaceContent() {
                 </div>
               </div>
 
+              {/* GENERATION LOADING STATE */}
               {isCurrentlyGenerating && (
                 <div className="bg-orange-100/50 border-t border-orange-200 px-6 py-3 flex items-center gap-3 animate-in fade-in duration-300">
                   <div className="w-4 h-4 border-2 border-[#d97706] border-t-transparent rounded-full animate-spin shrink-0" />
@@ -526,19 +573,37 @@ function WorkspaceContent() {
                 </div>
               )}
 
+              {/* 🚨 HIGH TRAFFIC RETRY UI */}
               {hasTrafficError && (
                 <div className="bg-orange-50 border-t border-orange-200 px-6 py-4 flex flex-col items-center justify-center text-center animate-in slide-in-from-top-2 duration-300">
                   {trafficErrorLevel === 1 && (
                     <>
-                      <p className="text-orange-800 text-sm font-bold mb-3">Our System is currently facing high traffic.</p>
-                      <button onClick={() => handleGenerateChapter(chapter.key)} className="bg-[#d97706] text-white px-6 py-2 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-[#b45309] transition-colors shadow-sm">Retry Generation</button>
+                      <p className="text-orange-800 text-sm font-bold mb-3">
+                        Our System is currently facing high traffic.
+                      </p>
+                      <button 
+                        onClick={() => handleGenerateChapter(chapter.key)}
+                        className="bg-[#d97706] text-white px-6 py-2 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-[#b45309] transition-colors shadow-sm"
+                      >
+                        Retry Generation
+                      </button>
                     </>
                   )}
+
                   {trafficErrorLevel === 2 && (
                     <>
-                      <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center mb-2"><span className="text-orange-600 text-lg">⏳</span></div>
-                      <p className="text-orange-800 text-sm font-bold mb-3 max-w-sm">We are still facing high traffic. Please try again after a few seconds.</p>
-                      <button onClick={() => handleGenerateChapter(chapter.key)} className="text-xs font-bold text-[#d97706] uppercase tracking-widest hover:underline">Try Again Now</button>
+                      <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center mb-2">
+                        <span className="text-orange-600 text-lg">⏳</span>
+                      </div>
+                      <p className="text-orange-800 text-sm font-bold mb-3 max-w-sm">
+                        We are still facing high traffic. Please try again after a few seconds.
+                      </p>
+                      <button 
+                        onClick={() => handleGenerateChapter(chapter.key)}
+                        className="text-xs font-bold text-[#d97706] uppercase tracking-widest hover:underline"
+                      >
+                        Try Again Now
+                      </button>
                     </>
                   )}
                 </div>
@@ -582,7 +647,7 @@ function WorkspaceContent() {
         </Link>
       </div>
 
-      {previewChapter && (
+      {previewChapter && (previewChapter === "FULL_DOCUMENT" ? fullDocumentContent : project.content[previewChapter]) && (
         <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300">
 
           <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 bg-gray-50 shrink-0 shadow-sm z-10">
@@ -605,8 +670,7 @@ function WorkspaceContent() {
             <div className="max-w-4xl mx-auto w-full min-h-full flex flex-col shadow-2xl my-8">
 
               <div className="flex-1 p-0">
-                {/* 🚨 CRITICAL AST PASS: Ensure LockedDocumentViewer is expecting 'blocks' */}
-                <LockedDocumentViewer blocks={previewChapter === "FULL_DOCUMENT" ? fullDocumentBlocks : project.content[previewChapter] || []} />
+                <LockedDocumentViewer content={previewChapter === "FULL_DOCUMENT" ? fullDocumentContent : project.content[previewChapter]} />
               </div>
 
               {previewChapter !== "FULL_DOCUMENT" && (
@@ -626,7 +690,7 @@ function WorkspaceContent() {
                             <h4 className="font-bold text-sm text-gray-800 uppercase tracking-wider">Submit Supervisor Feedback</h4>
                             <p className="text-xs text-gray-500 mt-1">The AI will rewrite this chapter to reflect the feedback perfectly.</p>
                           </div>
-
+                          
                           <span className={`${editsRemaining > 0 ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-orange-50 text-orange-700 border-orange-200"} border text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest`}>
                             {editsRemaining > 0 ? `${editsRemaining} Free Edits Left` : "5,000 UGX / Edit"}
                           </span>
