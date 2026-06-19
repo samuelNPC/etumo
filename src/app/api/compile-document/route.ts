@@ -6,7 +6,6 @@ import { doc, getDoc } from "firebase/firestore";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    // 🚨 ADDED: isWatermarked flag extracted from the request
     const { projectId, chapterKey, isFullDocument, structure, rawText, rawTitle, isWatermarked } = body;
 
     const parseInlineText = (text: string, forceBold: boolean = false): docx.TextRun[] => {
@@ -317,31 +316,31 @@ export async function POST(req: Request) {
       }
     }
 
-    // 🚨 SECTION 1: PRELIMINARY PAGES
+    // 🚨 FIX: Changed from PageNumberFormat to NumberFormat
     if (prelimChildren.length > 0) {
       docSections.push({
         properties: {
           page: {
-            pageNumbers: { start: 1, formatType: docx.PageNumberFormat.LOWER_ROMAN },
+            pageNumbers: { start: 1, formatType: docx.NumberFormat.LOWER_ROMAN },
           },
           titlePage: true, 
         },
-        headers: { default: createHeader() }, // Attaches the top watermark
-        footers: { default: createFooter() }, // Attaches the bottom disclaimer
+        headers: { default: createHeader() }, 
+        footers: { default: createFooter() }, 
         children: prelimChildren,
       });
     }
 
-    // 🚨 SECTION 2: MAIN CHAPTERS
+    // 🚨 FIX: Changed from PageNumberFormat to NumberFormat
     if (chapterChildren.length > 0) {
       docSections.push({
         properties: {
           page: {
-            pageNumbers: { start: 1, formatType: docx.PageNumberFormat.DECIMAL },
+            pageNumbers: { start: 1, formatType: docx.NumberFormat.DECIMAL },
           },
         },
-        headers: { default: createHeader() }, // Attaches the top watermark
-        footers: { default: createFooter() }, // Attaches the bottom disclaimer
+        headers: { default: createHeader() }, 
+        footers: { default: createFooter() }, 
         children: chapterChildren,
       });
     }
