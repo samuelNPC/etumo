@@ -171,7 +171,7 @@ export async function POST(req: Request) {
       ? `\n\nURGENT SUPERVISOR CORRECTION: The user's supervisor rejected the previous draft and requested the following changes:\n"${feedback}"\nRewrite the entire section strictly adhering to this feedback.`
       : "";
 
-    // 🚨 CONTEXT-AWARE RULES (This stops the 1.0 Introduction hallucination)
+    // 🚨 CONTEXT-AWARE RULES
     let specificRules = "";
     if (chapterKey === "preliminaryPages") {
       specificRules = `
@@ -222,8 +222,8 @@ export async function POST(req: Request) {
     const result = await generateWithResiliency(prompt);
     let generatedText = result.response.text().trim();
 
-    generatedText = generatedText.replace(/```(md|markdown|html)?/gi, "").replace(/
-```/g, "").trim();
+    // 🚨 The fix is here: strictly formatting the regex on a single continuous line.
+    generatedText = generatedText.replace(/```(md|markdown|html)?/gi, "").replace(/```/g, "").trim();
     generatedText = generatedText.replace(/^(Here is|Sure|Certainly).*?\n/i, "").trim();
 
     const jsonBlocks = parseMarkdownToBlocks(generatedText);
