@@ -20,7 +20,7 @@ const toRoman = (num: number): string => {
 };
 
 export default function LockedDocumentViewer({ content }: LockedDocumentViewerProps) {
-  
+
   useEffect(() => {
     // 🚨 MAXIMUM SECURITY: JavaScript-level protection
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
@@ -49,135 +49,150 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
   };
 
   // --- 2. ENGINE: PARSE, PAGINATE & BUILD TOC ---
-  const { pages, toc, chapterOneGlobalIndex } = useMemo(() => {
-    if (!content) return { pages: [], toc: [], chapterOneGlobalIndex: -1 };
+  const { pages, toc, lot, chapterOneGlobalIndex } = useMemo(() => {
+    if (!content) return { pages: [], toc: [], lot: [], chapterOneGlobalIndex: -1 };
 
     // Clean the raw AI output
     let cleanText = content
       .replace(/^(#\s*)?(\*\*)?PRELIMINARY PAGES(\*\*)?\s*$/gim, '')
       .replace(/^(#\s*)?(\*\*)?APPENDICES(\*\*)?\s*$/gim, '')
-      .replace(/^\*\*(CHAPTER .*?)\*\*\s*$/gim, '') // Strip duplicate bold headings
-      .replace(/\[PAGE BREAK\]/gi, ''); // Remove manual breaks, we auto-calculate now
+      .replace(/^\*\*(CHAPTER .*?)\*\*\s*$/gim, ''); // Strip duplicate bold headings
 
-    // Step A: Split into logical blocks (Paragraphs, Headings, Tables)
-    const rawBlocks = cleanText.split(/\n\n+/);
-    const parsedBlocks = [];
+    // Force a page break on explicit tags, markdown dividers, OR any major Heading 1
+    const paginatedText = cleanText
+      .replace(/\[PAGE BREAK\]/gi, '\n___PAGE_BREAK___\n')
+      .replace(/\n\s*---\s*\n/g, '\n___PAGE_BREAK___\n')
+      .replace(/\n# /g, '\n___PAGE_BREAK___\n# ')
+      .replace(/^# /, '\n___PAGE_BREAK___\n# ');
+
+    const rawPages = paginatedText.split('___PAGE_BREAK___').filter(p => p.trim().length > 0);
     
-    let isSkippingAiToc = false;
-
-    for (let i = 0; i < rawBlocks.length; i++) {
-      let blockText = rawBlocks[i].trim();
-      if (!blockText) continue;
-
-      // Ignore markdown dividers
-      if (blockText.match(/^[-*]{3,}$/)) continue;
-
-      // If the AI generated a raw markdown table for the TOC, we SKIP IT so we can inject our own
-      if (blockText.toUpperCase().includes("TABLE OF CONTENTS")) {
-        isSkippingAiToc = true;
-        parsedBlocks.push({ type: 'toc-placeholder', text: "TABLE OF CONTENTS" });
-        continue;
-      }
-      if (isSkippingAiToc) {
-        // Skip the table that immediately follows the TOC heading
-        if (blockText.startsWith("|") || blockText.toLowerCase().includes("abstract")) {
-          continue; 
-        } else {
-          isSkippingAiToc = false; // We passed the bad TOC, resume normal parsing
-        }
-      }
-
-      if (blockText.startsWith("|")) {
-        parsedBlocks.push({ type: 'table', text: blockText });
-      } else if (blockText.startsWith("# ")) {
-        parsedBlocks.push({ type: 'h1', text: blockText.replace("# ", "") });
-      } else if (blockText.startsWith("## ")) {
-        parsedBlocks.push({ type: 'h2', text: blockText.replace("## ", "") });
-      } else if (blockText.startsWith("### ")) {
-        parsedBlocks.push({ type: 'h3', text: blockText.replace("### ", "") });
-      } else {
-        parsedBlocks.push({ type: 'p', text: blockText });
-      }
-    }
-
-    // Step B: Auto-Paginate into A4 Sizes based on character count heuristics
-    const MAX_CHARS_PER_PAGE = 1700; 
     const finalPages: any[][] = [];
-    let currentPage: any[] = [];
-    let currentChars = 0;
     const generatedToc: any[] = [];
+    const generatedLot: any[] = []; // List of Tables
     let chapOneIndex = -1;
+    let tableCounter = 1;
 
-    parsedBlocks.forEach((block) => {
-      // Calculate how much physical space this block takes
-      let blockCost = block.text.length;
-      if (block.type === 'h1') blockCost += 300; // Big headings take lots of space
-      if (block.type === 'h2' || block.type === 'h3') blockCost += 150;
-      if (block.type === 'table') blockCost = block.text.split('\n').length * 150; 
+    rawPages.forEach((pageText) => {
+      const rawBlocks = pageText.split(/\n\n+/);
+      const currentPageBlocks: any[] = [];
+      let isSkippingAiToc = false;
 
-      const isNewChapter = block.type === 'h1' && block.text.toUpperCase().includes("CHAPTER");
+      rawBlocks.forEach((block) => {
+        let blockText = block.trim();
+        if (!blockText) return;
 
-      // Break to a new page IF it's a new chapter, OR if the current page is full
-      if ((isNewChapter && currentPage.length > 0) || (currentChars + blockCost > MAX_CHARS_PER_PAGE && currentPage.length > 0)) {
-        finalPages.push(currentPage);
-        currentPage = [];
-        currentChars = 0;
-      }
-
-      currentPage.push(block);
-      currentChars += blockCost;
-
-      // Map the Heading to the physical page we just placed it on
-      if (block.type === 'h1' || block.type === 'h2') {
-        const titleClean = block.text.replace(/\*\*/g, '').trim();
-        generatedToc.push({
-          title: titleClean,
-          level: block.type === 'h1' ? 1 : 2,
-          globalPageIndex: finalPages.length // Index of the page it lives on
-        });
-
-        // Detect where the real numbering should start
-        if (titleClean.toUpperCase().includes("CHAPTER ONE") || titleClean.toUpperCase().includes("CHAPTER 1")) {
-          chapOneIndex = finalPages.length;
+        // Skip AI-generated TOC/LOT blocks so we can inject our own clean ones
+        if (blockText.toUpperCase().includes("TABLE OF CONTENTS") || blockText.toUpperCase().includes("[SYSTEM_AUTO_INDEX]")) {
+          isSkippingAiToc = true;
+          currentPageBlocks.push({ type: 'toc-placeholder', text: "TABLE OF CONTENTS" });
+          return;
         }
+        if (isSkippingAiToc) {
+          if (blockText.startsWith("|") || blockText.toLowerCase().includes("abstract")) return; 
+          isSkippingAiToc = false; 
+        }
+
+        // --- NEW: ROBUST TABLE DETECTION ---
+        const lines = blockText.split('\n');
+        const tableStartIndex = lines.findIndex(line => line.trim().startsWith('|'));
+        const hasTableSeparator = lines.some(line => /^[|\-\s:]+$/.test(line.trim()) && line.includes('-'));
+
+        if (tableStartIndex !== -1 && hasTableSeparator) {
+          // We found a table mixed in this block!
+
+          // 1. If there is a title above the table (e.g., "Table 4.6: ANOVA"), separate it and push as a paragraph
+          if (tableStartIndex > 0) {
+            const titleText = lines.slice(0, tableStartIndex).join('\n').trim();
+            if (titleText) currentPageBlocks.push({ type: 'p', text: titleText });
+          }
+          
+          // 2. Push the actual Markdown table
+          const tableText = lines.slice(tableStartIndex).join('\n');
+          currentPageBlocks.push({ type: 'table', text: tableText });
+          
+          // 3. Track it for the List of Tables
+          let lotTitle = `Table ${tableCounter}`;
+          if (tableStartIndex > 0) {
+             const potentialTitle = lines[0].replace(/\*\*/g, '').trim();
+             if (potentialTitle.toLowerCase().startsWith('table')) {
+                lotTitle = potentialTitle.length > 70 ? potentialTitle.substring(0, 70) + '...' : potentialTitle;
+             }
+          }
+          generatedLot.push({
+            title: lotTitle,
+            globalPageIndex: finalPages.length
+          });
+          tableCounter++;
+
+        } 
+        // --- STANDARD HEADING AND PARAGRAPH PARSING ---
+        else if (blockText.startsWith("# ")) {
+          const title = blockText.replace("# ", "");
+          currentPageBlocks.push({ type: 'h1', text: title });
+          
+          const titleClean = title.replace(/\*\*/g, '').trim();
+          generatedToc.push({ title: titleClean, level: 1, globalPageIndex: finalPages.length });
+          
+          if (titleClean.toUpperCase().includes("CHAPTER ONE") || titleClean.toUpperCase().includes("CHAPTER 1")) {
+            chapOneIndex = finalPages.length;
+          }
+        } else if (blockText.startsWith("## ")) {
+          const title = blockText.replace("## ", "");
+          currentPageBlocks.push({ type: 'h2', text: title });
+          generatedToc.push({ title: title.replace(/\*\*/g, '').trim(), level: 2, globalPageIndex: finalPages.length });
+        } else if (blockText.startsWith("### ")) {
+          currentPageBlocks.push({ type: 'h3', text: blockText.replace("### ", "") });
+        } else {
+          currentPageBlocks.push({ type: 'p', text: blockText });
+        }
+      });
+
+      if (currentPageBlocks.length > 0) {
+        finalPages.push(currentPageBlocks);
       }
     });
 
-    if (currentPage.length > 0) finalPages.push(currentPage);
-
-    return { pages: finalPages, toc: generatedToc, chapterOneGlobalIndex: chapOneIndex };
+    return { pages: finalPages, toc: generatedToc, lot: generatedLot, chapterOneGlobalIndex: chapOneIndex };
   }, [content]);
+
+  // --- Helper: Get Display Page Number ---
+  const getDisplayPageNum = (globalIndex: number) => {
+    if (globalIndex === 0) return "";
+    if (chapterOneGlobalIndex !== -1 && globalIndex < chapterOneGlobalIndex) {
+      return toRoman(globalIndex);
+    }
+    return (globalIndex - (chapterOneGlobalIndex !== -1 ? chapterOneGlobalIndex : 1) + 1).toString();
+  };
 
   // --- 3. DYNAMIC TOC RENDERER ---
   const renderDynamicToC = () => {
     return (
-      <div className="w-full mt-6 mb-8 px-4 font-sans">
+      <div className="w-full mt-4 mb-8 px-2 md:px-8 font-sans">
         {toc.map((item, idx) => {
-          // Calculate realistic page number based on physical A4 boundaries
-          let displayPageNum = "";
-          if (item.globalPageIndex === 0) {
-            displayPageNum = ""; // Cover page has no number
-          } else if (chapterOneGlobalIndex !== -1 && item.globalPageIndex < chapterOneGlobalIndex) {
-            // Preliminary pages use roman numerals
-            displayPageNum = toRoman(item.globalPageIndex);
-          } else {
-            // Body pages use standard numbers
-            const actualPage = item.globalPageIndex - (chapterOneGlobalIndex !== -1 ? chapterOneGlobalIndex : 1) + 1;
-            displayPageNum = actualPage.toString();
-          }
-
-          // Don't list the cover page in the TOC
-          if (item.globalPageIndex === 0) return null;
-
+          if (item.globalPageIndex === 0) return null; // Skip cover page
           return (
-            <div key={idx} className={`flex w-full text-xs md:text-sm items-end mb-2 ${item.level === 1 ? 'font-bold mt-4' : 'pl-4 text-gray-700'}`}>
+            <div key={`toc-${idx}`} className={`flex w-full text-[11px] md:text-sm items-end mb-1 md:mb-2 ${item.level === 1 ? 'font-bold mt-2 md:mt-4' : 'pl-4 text-gray-700'}`}>
               <span className="bg-white pr-2 whitespace-nowrap">{item.title}</span>
-              {/* Dotted Leader Line */}
               <span className="flex-grow border-b-[2px] border-dotted border-gray-400 relative -top-1 mx-1"></span>
-              <span className="bg-white pl-2">{displayPageNum}</span>
+              <span className="bg-white pl-2">{getDisplayPageNum(item.globalPageIndex)}</span>
             </div>
           );
         })}
+        
+        {/* Append List of Tables if tables exist */}
+        {lot.length > 0 && (
+          <div className="mt-8 page-break-before">
+            <h1 className="text-xl md:text-2xl font-black mt-0 mb-6 uppercase tracking-widest text-center">LIST OF TABLES</h1>
+            {lot.map((item, idx) => (
+              <div key={`lot-${idx}`} className="flex w-full text-[11px] md:text-sm items-end mb-1 md:mb-2 pl-4 text-gray-700">
+                <span className="bg-white pr-2 whitespace-nowrap">{item.title}</span>
+                <span className="flex-grow border-b-[2px] border-dotted border-gray-400 relative -top-1 mx-1"></span>
+                <span className="bg-white pl-2">{getDisplayPageNum(item.globalPageIndex)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -185,29 +200,36 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
   // --- 4. HTML TABLE GENERATOR ---
   const renderTable = (rawMarkdown: string, keyIndex: number) => {
     const rows = rawMarkdown.split('\n');
-    const isSeparator = (r: string) => /^[|\-\s:]+$/.test(r);
-    const cleanRows = rows.filter((r) => !isSeparator(r));
-    const hasHeader = rows.length > 1 && isSeparator(rows[1]);
+    const isSeparator = (r: string) => /^[|\-\s:]+$/.test(r.trim()) && r.includes('-');
+    const cleanRows = rows.filter((r) => !isSeparator(r) && r.trim().length > 0);
+    const hasHeader = rows.length > 1 && rows.some(isSeparator);
+
+    // Robust cell parser: Handles pipes correctly even if outer pipes are missing
+    const parseCells = (row: string) => {
+      let cells = row.split('|').map(c => c.trim());
+      if (cells.length > 0 && cells[0] === '') cells.shift();
+      if (cells.length > 0 && cells[cells.length - 1] === '') cells.pop();
+      return cells;
+    };
 
     return (
       <div key={keyIndex} className="w-full overflow-x-auto my-6">
-        <table className="w-full border-collapse border border-gray-300 text-xs md:text-sm text-left font-sans">
+        <table className="w-full border-collapse border border-gray-300 text-[10px] md:text-xs text-left font-sans">
           {hasHeader && cleanRows.length > 0 && (
             <thead className="bg-gray-100">
               <tr>
-                {cleanRows[0].split('|').map((c) => c.trim()).filter((_, i, arr) => i !== 0 && i !== arr.length - 1).map((cell, i) => (
-                    <th key={i} className="py-2 px-3 border border-gray-300 font-bold text-gray-800">{formatInlineText(cell)}</th>
+                {parseCells(cleanRows[0]).map((cell, i) => (
+                    <th key={i} className="py-2 px-2 border border-gray-300 font-bold text-gray-800">{formatInlineText(cell)}</th>
                 ))}
               </tr>
             </thead>
           )}
           <tbody>
             {cleanRows.slice(hasHeader ? 1 : 0).map((row, rIdx) => {
-              const cells = row.split('|').map((c) => c.trim()).filter((_, i, arr) => i !== 0 && i !== arr.length - 1);
               return (
                 <tr key={rIdx} className="border-b border-gray-300 hover:bg-gray-50">
-                  {cells.map((cell, cIdx) => (
-                    <td key={cIdx} className="py-2 px-3 border border-gray-300 text-gray-700">{formatInlineText(cell)}</td>
+                  {parseCells(row).map((cell, cIdx) => (
+                    <td key={cIdx} className="py-2 px-2 border border-gray-300 text-gray-700">{formatInlineText(cell)}</td>
                   ))}
                 </tr>
               );
@@ -227,19 +249,9 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
       {pages.map((pageBlocks, index) => {
         const isCoverPage = index === 0;
 
-        // Calculate the footer page number display
-        let footerPageNum = "";
-        if (!isCoverPage) {
-          if (chapterOneGlobalIndex !== -1 && index < chapterOneGlobalIndex) {
-            footerPageNum = toRoman(index);
-          } else {
-            footerPageNum = (index - (chapterOneGlobalIndex !== -1 ? chapterOneGlobalIndex : 1) + 1).toString();
-          }
-        }
-
         return (
           <div key={index} className="relative bg-white shadow-xl w-full max-w-[210mm] min-h-[297mm] px-8 py-12 md:px-[25.4mm] md:py-[25.4mm] pointer-events-none flex flex-col overflow-hidden">
-            
+
             {/* Watermark */}
             <div className="absolute inset-0 pointer-events-none opacity-[0.04] flex items-center justify-center text-center z-0"
               style={{ backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'400\' height=\'400\'><text x=\'50%\' y=\'50%\' font-family=\'sans-serif\' font-size=\'36\' font-weight=\'900\' fill=\'%23d97706\' text-anchor=\'middle\' transform=\'rotate(-45 200 200)\'>ETOMU.com</text></svg>")', backgroundRepeat: 'repeat' }}>
@@ -247,7 +259,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
 
             {/* Page Content */}
             <div className={`relative z-10 font-serif text-gray-900 flex-grow ${isCoverPage ? 'flex flex-col justify-center items-center text-center' : 'text-justify'}`}>
-              
+
               {pageBlocks.map((block: any, bIdx: number) => {
                 if (block.type === 'toc-placeholder') {
                   return (
@@ -258,10 +270,11 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
                   );
                 }
                 if (block.type === 'table') return renderTable(block.text, bIdx);
-                if (block.type === 'h1') return <h1 key={bIdx} className={`text-xl md:text-2xl font-black mt-0 mb-6 uppercase tracking-widest ${isCoverPage ? 'text-center' : 'text-center'}`}>{formatInlineText(block.text)}</h1>;
+                
+                if (block.type === 'h1') return <h1 key={bIdx} className="text-xl md:text-2xl font-black mt-0 mb-6 uppercase tracking-widest text-center">{formatInlineText(block.text)}</h1>;
                 if (block.type === 'h2') return <h2 key={bIdx} className={`text-lg md:text-xl font-bold mt-6 mb-3 ${isCoverPage ? 'text-center' : 'text-left'}`}>{formatInlineText(block.text)}</h2>;
                 if (block.type === 'h3') return <h3 key={bIdx} className={`text-base md:text-lg font-bold mt-4 mb-2 ${isCoverPage ? 'text-center' : 'text-left'}`}>{formatInlineText(block.text)}</h3>;
-                
+
                 return <p key={bIdx} className={`mb-4 text-sm md:text-[16px] leading-[2] ${isCoverPage ? 'text-center' : 'text-justify'}`}>{formatInlineText(block.text)}</p>;
               })}
 
@@ -270,7 +283,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
             {/* Page Number Footer */}
             {!isCoverPage && (
               <div className="absolute bottom-[10mm] left-0 w-full text-center text-xs md:text-sm text-gray-500 font-serif">
-                {footerPageNum}
+                {getDisplayPageNum(index)}
               </div>
             )}
           </div>
