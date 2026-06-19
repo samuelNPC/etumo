@@ -6,6 +6,22 @@ interface LockedDocumentViewerProps {
   content: string;
 }
 
+// Helper to convert numbers to lowercase Roman numerals
+const toRoman = (num: number): string => {
+  const roman: Record<string, number> = {
+    m: 1000, cm: 900, d: 500, cd: 400,
+    c: 100, xc: 90, l: 50, xl: 40,
+    x: 10, ix: 9, v: 5, iv: 4, i: 1
+  };
+  let str = '';
+  for (let key in roman) {
+    let q = Math.floor(num / roman[key]);
+    num -= q * roman[key];
+    str += key.repeat(q);
+  }
+  return str;
+};
+
 export default function LockedDocumentViewer({ content }: LockedDocumentViewerProps) {
   useEffect(() => {
     // 🚨 MAXIMUM SECURITY: JavaScript-level protection
@@ -28,7 +44,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
 
   // Format internal text (headings, bolding, paragraphs, and tables)
   const formatText = (text: string) => {
-    // Aggressively collapse 3+ empty lines down to just 2 to fix massive spacing
+    // Aggressively collapse 3+ empty lines down to just 2
     const normalizedText = text.replace(/\n{3,}/g, '\n\n');
 
     return normalizedText.split('\n').map((line, idx) => {
@@ -38,15 +54,11 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
 
       // 🚨 SMART TABLE & TOC RENDERER
       if (trimmedLine.includes("|") && trimmedLine.length > 3) {
-        // Clean the markdown table syntax
         const cleanRow = trimmedLine.replace(/^\|/, '').replace(/\|$/, '');
         const cols = cleanRow.split('|').map(c => c.trim());
 
-        // Ignore structural markdown divider lines (e.g., |---|---| or | :--- |)
         if (cols.every(c => /^[:\- ]+$/.test(c) || c === '')) return null;
 
-        // Is this a Table of Contents / List of Tables row? 
-        // Heuristic: Last column is a short number or roman numeral
         if (cols.length >= 2) {
           const lastCol = cols[cols.length - 1];
           const isPageNumber = /^[0-9ivxlc]+$/i.test(lastCol.replace(/[^0-9a-zA-Z]/g, ''));
@@ -55,7 +67,6 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
             const leftText = cols.slice(0, -1).join(' ').replace(/\*\*/g, '');
             const isMainChapter = leftText.toUpperCase().includes("CHAPTER");
             
-            // Render with the perfect dotted leader lines!
             return (
               <div key={idx} className={`flex items-end mb-2 text-sm md:text-[16px] leading-[2] ${isMainChapter ? 'mt-4 font-bold' : ''}`}>
                 <span>{leftText}</span>
@@ -66,7 +77,6 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
           }
         }
 
-        // If it's a real data table (e.g., in Chapter 4 Data Presentation)
         return (
           <div key={idx} className="flex w-full border-b border-gray-300 bg-white first:border-t first:bg-gray-100 first:font-bold">
             {cols.map((col, i) => (
@@ -146,15 +156,12 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     const originalLine = lines[i];
     const trimmedLine = originalLine.trim();
     
-    // Create a perfectly clean string for matching
     const cleanLineToMatch = originalLine.toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
 
-    // Kill duplicate title injections entirely
     if (cleanLineToMatch === "PRELIMINARY PAGES" || cleanLineToMatch === "APPENDICES") {
       continue;
     }
 
-    // 🚨 FIX: Ensure the trigger is NOT inside a markdown table row (checks for | )
     const isInsideTable = trimmedLine.includes("|");
     const isChapterHeading = cleanLineToMatch.startsWith("CHAPTER ") && cleanLineToMatch.length < 60 && !isInsideTable;
     const isTrigger = pageBreakTriggers.includes(cleanLineToMatch) && !isInsideTable;
@@ -170,7 +177,6 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
         currentPage.push(`# ${originalLine.replace(/[*#|]/g, '').trim()}`);
       }
     } else {
-      // Ignore Markdown table structure lines during parsing to prevent empty gaps
       if (trimmedLine.match(/^\|?[:\-\s]+\|[:\-\s|]*$/)) continue;
 
       if (currentPage.length === 0 && originalLine.trim() === '') {
@@ -184,10 +190,38 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     pages.push(currentPage.join('\n'));
   }
 
+  // 🚨 3. ACADEMIC NUMBERING ENGINE
+  // Find where the main document starts to switch from Roman (i) to Arabic (1)
+  const firstChapterIndex = pages.findIndex(page => /^#\s*CHAPTER\b/im.test(page));
+  
+  // If we don't find a chapter, are we ONLY previewing preliminary pages?
+  const isPrelimOnly = firstChapterIndex === -1 && pages.some(page => 
+    pageBreakTriggers.some(trigger => page.toUpperCase().includes(`# ${trigger}`))
+  );
+
   return (
     <div className="bg-gray-200 py-6 md:py-10 px-2 md:px-10 overflow-y-auto locked-document-viewer select-none flex flex-col gap-6 md:gap-8 items-center min-h-[80vh]">
 
       {pages.map((pageContent, index) => {
+        // Determine the correct page number based on index and chapter location
+        let displayPageNumber = "";
+        
+        if (firstChapterIndex !== -1) {
+          // Mixed Document (Full Compilation)
+          if (index < firstChapterIndex) {
+            displayPageNumber = toRoman(index + 1); // Preliminary pages get Roman
+          } else {
+            displayPageNumber = (index - firstChapterIndex + 1).toString(); // Chapters reset to 1
+          }
+        } else {
+          // Isolated Preview
+          if (isPrelimOnly) {
+            displayPageNumber = toRoman(index + 1);
+          } else {
+            displayPageNumber = (index + 1).toString();
+          }
+        }
+
         return (
           // RESPONSIVE A4 PAGE CONTAINER
           <div 
@@ -209,8 +243,8 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
             </div>
 
             {/* Page Number */}
-            <div className="absolute bottom-[10mm] md:bottom-[15mm] left-0 w-full text-center text-xs md:text-sm text-gray-500 font-serif">
-              {index + 1}
+            <div className="absolute bottom-[10mm] md:bottom-[15mm] left-0 w-full text-center text-xs md:text-sm text-gray-500 font-serif font-bold tracking-widest">
+              {displayPageNumber}
             </div>
           </div>
         );
