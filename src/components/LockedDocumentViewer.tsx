@@ -59,12 +59,14 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
 
         if (cols.every(c => /^[:\- ]+$/.test(c) || c === '')) return null;
 
-        if (cols.length >= 2) {
-          const lastCol = cols[cols.length - 1];
+        // STRICT TOC HEURISTIC: Exactly 2 columns to prevent data table collision
+        if (cols.length === 2) {
+          const lastCol = cols[1];
           const isPageNumber = /^[0-9ivxlc]+$/i.test(lastCol.replace(/[^0-9a-zA-Z]/g, ''));
+          const leftText = cols[0].replace(/\*\*/g, '');
           
-          if (isPageNumber && lastCol.length <= 6) {
-            const leftText = cols.slice(0, -1).join(' ').replace(/\*\*/g, '');
+          // Left text must be somewhat long to avoid 2-column data tables (like Yes/No tables)
+          if (isPageNumber && lastCol.length <= 6 && leftText.length > 3) {
             const isMainChapter = leftText.toUpperCase().includes("CHAPTER");
             
             return (
@@ -77,6 +79,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
           }
         }
 
+        // STANDARD DATA TABLE RENDERER
         return (
           <div key={idx} className="flex w-full border-b border-gray-300 bg-white first:border-t first:bg-gray-100 first:font-bold">
             {cols.map((col, i) => (
@@ -211,16 +214,16 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
         } else if (firstChapterIndex !== -1) {
           // Mixed Document (Full Compilation)
           if (index < firstChapterIndex) {
-            displayPageNumber = toRoman(index); // Cover page was 0, so index 1 becomes 'i'
+            displayPageNumber = toRoman(index); 
           } else {
-            displayPageNumber = (index - firstChapterIndex + 1).toString(); // Chapters reset to 1
+            displayPageNumber = (index - firstChapterIndex + 1).toString(); 
           }
         } else {
           // Isolated Preview
           if (isPrelimOnly) {
-            displayPageNumber = toRoman(index); // Cover page was 0, so index 1 becomes 'i'
+            displayPageNumber = toRoman(index); 
           } else {
-            displayPageNumber = (index + 1).toString(); // Standard Chapter preview (no cover page)
+            displayPageNumber = (index + 1).toString(); 
           }
         }
 
