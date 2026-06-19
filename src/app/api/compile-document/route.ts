@@ -6,13 +6,10 @@ import { doc, getDoc } from "firebase/firestore";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    // 🚨 ADDED: rawText and rawTitle for the Originality Center bypass
     const { projectId, chapterKey, isFullDocument, structure, rawText, rawTitle } = body;
 
-    // Elements can now be either Paragraphs OR Native Word Tables
     const docChildren: (docx.Paragraph | docx.Table)[] = [];
 
-    // Helper: Parses inline formatting (like bold/italics) for both paragraphs and table cells
     const parseInlineText = (text: string, forceBold: boolean = false): docx.TextRun[] => {
       const runs: docx.TextRun[] = [];
       let currentIdx = 0;
@@ -39,42 +36,71 @@ export async function POST(req: Request) {
       return runs;
     };
 
-    // 🚨 UPGRADED COMPILER ENGINE: Detects Tables, Diagrams, and Paragraphs
+    // 🚨 ALIGNED WITH FRONTEND: Same page break triggers
+    const pageBreakTriggers = [
+      "DECLARATION", "APPROVAL", "DEDICATION", "ACKNOWLEDGEMENT", "ACKNOWLEDGEMENTS",
+      "ABSTRACT", "TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES", 
+      "LIST OF ACRONYMS", "LIST OF ABBREVIATIONS"
+    ];
+
     const processTextToElements = (text: string) => {
-      const lines = text.split("\n");
+      // Aggressively collapse empty lines like we do on the frontend
+      const normalizedText = text.replace(/\n{3,}/g, '\n\n');
+      const lines = normalizedText.split("\n");
       const elements: (docx.Paragraph | docx.Table)[] = [];
 
       let inTable = false;
       let tableRowsData: string[][] = [];
 
-      // Flushes the gathered table rows into a native Microsoft Word Table
       const flushTable = () => {
         if (tableRowsData.length > 0) {
-          const table = new docx.Table({
-            width: { size: 100, type: docx.WidthType.PERCENTAGE }, // Full width table
-            rows: tableRowsData.map((row, rowIndex) => {
-              const isHeader = rowIndex === 0;
-              return new docx.TableRow({
-                children: row.map(cellText => {
-                  return new docx.TableCell({
-                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
-                    // Light gray shading for the header row to make it academic and professional
-                    shading: isHeader ? { fill: "F3F4F6", type: docx.ShadingType.CLEAR, color: "auto" } : undefined,
-                    children: [
-                      new docx.Paragraph({
-                        children: parseInlineText(cellText, isHeader),
-                        alignment: isHeader ? docx.AlignmentType.CENTER : docx.AlignmentType.LEFT,
-                        spacing: { after: 0, line: 240 },
-                      })
-                    ]
-                  });
-                })
-              });
-            })
+          
+          // 🚨 ALIGNED WITH FRONTEND: Detect if this is a Table of Contents
+          const isTOC = tableRowsData.every((row, idx) => {
+            if (idx === 0) return true; // Ignore header row for check
+            if (row.length !== 2) return false;
+            const lastCol = row[1];
+            return /^[0-9ivxlc]+$/i.test(lastCol.replace(/[^0-9a-zA-Z]/g, '')) && lastCol.length <= 6;
           });
 
-          elements.push(table);
-          // Add a buffer paragraph after the table
+          if (isTOC) {
+            // Render native Microsoft Word TOC with dotted tab leaders
+            tableRowsData.forEach(row => {
+              elements.push(new docx.Paragraph({
+                children: [
+                  ...parseInlineText(row[0].replace(/\*\*/g, '')),
+                  new docx.TextRun({ text: "\t" + row[1], size: 24, font: "Times New Roman" })
+                ],
+                // 9000 twips is roughly the right side of an A4 page
+                tabStops: [{ type: docx.TabStopType.RIGHT, position: 9000, leader: docx.TabStopLeader.DOT }],
+                spacing: { after: 120 }
+              }));
+            });
+          } else {
+            // Render standard academic Data Table
+            const table = new docx.Table({
+              width: { size: 100, type: docx.WidthType.PERCENTAGE }, 
+              rows: tableRowsData.map((row, rowIndex) => {
+                const isHeader = rowIndex === 0;
+                return new docx.TableRow({
+                  children: row.map(cellText => {
+                    return new docx.TableCell({
+                      margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                      shading: isHeader ? { fill: "F3F4F6", type: docx.ShadingType.CLEAR, color: "auto" } : undefined,
+                      children: [
+                        new docx.Paragraph({
+                          children: parseInlineText(cellText, isHeader),
+                          alignment: isHeader ? docx.AlignmentType.CENTER : docx.AlignmentType.LEFT,
+                          spacing: { after: 0, line: 240 },
+                        })
+                      ]
+                    });
+                  })
+                });
+              })
+            });
+            elements.push(table);
+          }
           elements.push(new docx.Paragraph({ text: "", spacing: { after: 200 } }));
         }
         inTable = false;
@@ -83,20 +109,43 @@ export async function POST(req: Request) {
 
       for (let i = 0; i < lines.length; i++) {
         const trimmed = lines[i].trim();
+        const cleanLineToMatch = trimmed.toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
 
-        // 1. TABLE STATE DETECTOR
+        // Skip frontend meta-tags
+        if (cleanLineToMatch === "PRELIMINARY PAGES" || cleanLineToMatch === "APPENDICES") {
+          continue;
+        }
+
+        // 🚨 ALIGNED WITH FRONTEND: Native Word Page Breaks for sections
+        const isChapterHeading = cleanLineToMatch.startsWith("CHAPTER ") && cleanLineToMatch.length < 60;
+        const isTrigger = pageBreakTriggers.includes(cleanLineToMatch);
+
+        if (isTrigger || isChapterHeading) {
+          if (inTable) flushTable();
+          // Force a page break before the heading (unless it's the very first element)
+          if (elements.length > 0) {
+            elements.push(new docx.Paragraph({ text: "", pageBreakBefore: true }));
+          }
+          
+          elements.push(
+            new docx.Paragraph({
+              text: trimmed.replace(/[*#]/g, '').trim().toUpperCase(),
+              heading: docx.HeadingLevel.HEADING_1,
+              alignment: docx.AlignmentType.CENTER,
+              spacing: { before: 400, after: 400 },
+            })
+          );
+          continue;
+        }
+
+        // 1. TABLE DETECTOR
         if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
           inTable = true;
-          // Ignore the Markdown separator row (e.g. |---|---|)
-          if (trimmed.match(/^\|[\s\-\|]+\|$/)) {
-            continue;
-          }
-          // Split the columns and clean the text
+          if (trimmed.match(/^\|[\s\-\|:]+\|$/)) continue;
           const cells = trimmed.split("|").slice(1, -1).map(c => c.trim());
           tableRowsData.push(cells);
           continue;
         } else if (inTable) {
-          // If we hit a normal line but we were in a table, flush the table to the document
           flushTable();
         }
 
@@ -106,18 +155,12 @@ export async function POST(req: Request) {
           continue;
         }
 
-        // 3. CONCEPTUAL FRAMEWORK INTERCEPTOR (Highlights placeholder in bold Orange)
+        // 3. CONCEPTUAL FRAMEWORK INTERCEPTOR
         if (trimmed.includes("[INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE]")) {
            elements.push(
             new docx.Paragraph({
               children: [
-                new docx.TextRun({ 
-                  text: "[INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE]", 
-                  bold: true, 
-                  color: "D97706", 
-                  size: 24, 
-                  font: "Times New Roman" 
-                })
+                new docx.TextRun({ text: "[INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE]", bold: true, color: "D97706", size: 24, font: "Times New Roman" })
               ],
               alignment: docx.AlignmentType.CENTER,
               spacing: { before: 400, after: 400 },
@@ -126,31 +169,35 @@ export async function POST(req: Request) {
           continue;
         }
 
-        // 4. MARKDOWN HEADINGS (e.g. ### Chapter One)
-        const headerMatch = trimmed.match(/^(#{1,6})\s+(.*)/);
+        // 4. MARKDOWN HEADINGS (H2, H3)
+        const headerMatch = trimmed.match(/^(#{2,6})\s+(.*)/);
         if (headerMatch) {
           const level = headerMatch[1].length;
           const contentText = headerMatch[2].replace(/\*/g, ""); 
-
-          let headingLevel;
-          switch(level) {
-              case 1: headingLevel = docx.HeadingLevel.HEADING_1; break;
-              case 2: headingLevel = docx.HeadingLevel.HEADING_2; break;
-              case 3: headingLevel = docx.HeadingLevel.HEADING_3; break;
-              default: headingLevel = docx.HeadingLevel.HEADING_4; break;
-          }
+          let headingLevel = level === 2 ? docx.HeadingLevel.HEADING_2 : docx.HeadingLevel.HEADING_3;
 
           elements.push(
             new docx.Paragraph({
-              text: contentText.toUpperCase(),
+              text: contentText,
               heading: headingLevel,
+              alignment: level === 2 ? docx.AlignmentType.CENTER : docx.AlignmentType.LEFT,
               spacing: { before: 400, after: 200 },
             })
           );
           continue;
         }
 
-        // 5. NORMAL PARAGRAPHS & BULLETS
+        // 5. CENTERED PLACEHOLDERS
+        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+          elements.push(new docx.Paragraph({
+            children: parseInlineText(trimmed),
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { after: 200 }
+          }));
+          continue;
+        }
+
+        // 6. NORMAL PARAGRAPHS & BULLETS
         const isBullet = /^[\*\-]\s+(.*)/.exec(trimmed);
         let contentText = trimmed;
         let bulletInfo = undefined;
@@ -162,7 +209,7 @@ export async function POST(req: Request) {
 
         const paraOptions: any = {
           children: parseInlineText(contentText),
-          spacing: { after: 200, line: 360 }, // 1.5 Line Spacing standard
+          spacing: { after: 200, line: 360 }, 
           alignment: docx.AlignmentType.JUSTIFIED,
         };
 
@@ -174,13 +221,10 @@ export async function POST(req: Request) {
         elements.push(new docx.Paragraph(paraOptions));
       }
 
-      // Flush table if the document ended immediately after a table
       if (inTable) flushTable();
-
       return elements;
     };
 
-    // 🚨 NEW: Originality Center Bypass. If rawText exists, compile it directly!
     if (rawText) {
       if (rawTitle) {
         docChildren.push(
@@ -191,74 +235,45 @@ export async function POST(req: Request) {
           })
         );
       }
-
       const elements = processTextToElements(rawText);
       docChildren.push(...elements);
-
-      const document = new docx.Document({
-        creator: "Etumo Engine",
-        title: rawTitle || "Remediated Document",
-        sections: [{ properties: {}, children: docChildren }],
-      });
-
-      const buffer = await docx.Packer.toBuffer(document);
-      return new NextResponse(buffer, {
-        status: 200,
-        headers: {
-          "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          "Content-Disposition": `attachment; filename="Remediated_Document.docx"`,
-        },
-      });
-    }
-
-    // --- EXISTING WORKSPACE LOGIC ---
-    if (!projectId || !chapterKey || !structure) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-    }
-
-    const docRef = doc(db, "projects", projectId);
-    const docSnap = await getDoc(docRef);
-
-    if (!docSnap.exists()) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
-    }
-
-    const data = docSnap.data();
-    const contentData = data.content || {};
-
-    if (isFullDocument) {
-      // 🚨 REMOVED: The overarching topic header injection is gone.
-      
-      structure.forEach((chapter: any, index: number) => {
-        if (chapter.key === "guidelines") return;
-
-        const chapterText = contentData[chapter.key];
-
-        if (chapterText) {
-          // Add a Page Break before every chapter (except the very first one)
-          if (index > 1) { 
-            docChildren.push(new docx.Paragraph({ text: "", pageBreakBefore: true }));
-          }
-
-          const elements = processTextToElements(chapterText);
-          docChildren.push(...elements);
-        }
-      });
-
     } else {
-      const singleChapterText = contentData[chapterKey];
-
-      if (!singleChapterText) {
-        return NextResponse.json({ error: "Chapter content not found" }, { status: 404 });
+      if (!projectId || !chapterKey || !structure) {
+        return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
       }
 
-      const elements = processTextToElements(singleChapterText);
-      docChildren.push(...elements);
+      const docRef = doc(db, "projects", projectId);
+      const docSnap = await getDoc(docRef);
+
+      if (!docSnap.exists()) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      }
+
+      const data = docSnap.data();
+      const contentData = data.content || {};
+
+      if (isFullDocument) {
+        structure.forEach((chapter: any, index: number) => {
+          if (chapter.key === "guidelines") return;
+          const chapterText = contentData[chapter.key];
+          if (chapterText) {
+            const elements = processTextToElements(chapterText);
+            docChildren.push(...elements);
+          }
+        });
+      } else {
+        const singleChapterText = contentData[chapterKey];
+        if (!singleChapterText) {
+          return NextResponse.json({ error: "Chapter content not found" }, { status: 404 });
+        }
+        const elements = processTextToElements(singleChapterText);
+        docChildren.push(...elements);
+      }
     }
 
     const document = new docx.Document({
       creator: "Etumo Engine",
-      title: data.topic || "Research Document",
+      title: rawTitle || "Research Document",
       sections: [
         {
           properties: {},
