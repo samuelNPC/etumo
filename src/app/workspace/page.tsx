@@ -4,9 +4,10 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { db, auth } from "@/lib/firebase";
-import { doc, getDoc, collection, addDoc } from "firebase/firestore";
+import { doc, getDoc, collection, addDoc, setDoc } from "firebase/firestore";
 import LockedDocumentViewer from "@/components/LockedDocumentViewer";
 import GuidelineUploader from "@/components/GuidelineUploader";
+import PaymentModal from "@/components/PaymentModal";
 
 interface ChapterStructure {
   key: string;
@@ -18,6 +19,7 @@ interface ProjectData {
   course: string;
   faculty: string;
   progress: number;
+  freeEditsUsed?: number; 
   guidelines?: {
     isCustomized: boolean;
     formattingRules: string;
@@ -36,6 +38,7 @@ const defaultStructure: ChapterStructure[] = [
   { key: "chapter3", label: "5. Methodology" },
   { key: "chapter4", label: "6. Data Presentation" },
   { key: "chapter5", label: "7. Conclusion" },
+  { key: "appendices", label: "8. Appendices (Instruments & Budget)" }, 
 ];
 
 const generationQuotes = [
@@ -57,9 +60,11 @@ function WorkspaceContent() {
   const [loading, setLoading] = useState<boolean>(true);
 
   const [generatingKey, setGeneratingKey] = useState<string | null>(null);
-  
-  // Preview State: Can be a chapter key, or "FULL_DOCUMENT"
   const [previewChapter, setPreviewChapter] = useState<string | null>(null);
+
+  // 🚨 High Traffic Retry States
+  const [trafficErrorLevel, setTrafficErrorLevel] = useState<0 | 1 | 2>(0);
+  const [failedChapterKey, setFailedChapterKey] = useState<string | null>(null);
 
   const [lockedPopup, setLockedPopup] = useState<boolean>(false);
   const [quoteIndex, setQuoteIndex] = useState(0);
@@ -72,6 +77,19 @@ function WorkspaceContent() {
   const [showFeedbackPanel, setShowFeedbackPanel] = useState<boolean>(false);
   const [feedbackText, setFeedbackText] = useState<string>("");
   const [applyingCorrection, setApplyingCorrection] = useState<boolean>(false);
+
+  // Universal Payment State
+  const [paymentState, setPaymentState] = useState<{
+    isActive: boolean;
+    amount: number;
+    description: string;
+    onSuccess: () => void;
+  }>({
+    isActive: false,
+    amount: 0,
+    description: "",
+    onSuccess: () => {},
+  });
 
   useEffect(() => {
     if (!projectId) {
@@ -123,6 +141,7 @@ function WorkspaceContent() {
         course: course || "General",
         faculty: "General",
         progress: 10,
+        freeEditsUsed: 0, 
         content: {},
         userId: auth.currentUser?.uid || "anonymous", 
         createdAt: new Date().toISOString(),
@@ -142,7 +161,6 @@ function WorkspaceContent() {
     (c) => c.key !== "guidelines" && !generatedChapters.includes(c.key)
   );
 
-  // 🚨 STITCH FULL DOCUMENT CONTENT FOR PREVIEW
   const fullDocumentContent = currentStructure
     .filter(c => c.key !== "guidelines" && project?.content[c.key])
     .map(c => `### ${c.label.toUpperCase()}\n\n${project?.content[c.key]}`)
@@ -151,6 +169,7 @@ function WorkspaceContent() {
   const handleGenerateChapter = async (chapterKey: string) => {
     if (!projectId) return;
     setGeneratingKey(chapterKey);
+    setFailedChapterKey(null); // Reset previous failures on new attempt
     setQuoteIndex(0); 
 
     try {
@@ -161,6 +180,22 @@ function WorkspaceContent() {
       });
 
       const data = await res.json();
+
+      if (!res.ok) {
+        // 🚨 HIGH TRAFFIC RETRY LOGIC
+        if (res.status === 503 || data.code === "HIGH_TRAFFIC") {
+          setFailedChapterKey(chapterKey);
+          if (trafficErrorLevel === 0) {
+            setTrafficErrorLevel(1);
+            throw new Error("TRAFFIC_STRIKE_1");
+          } else {
+            setTrafficErrorLevel(2);
+            throw new Error("TRAFFIC_STRIKE_2");
+          }
+        }
+        throw new Error(data.error || "Failed to generate chapter.");
+      }
+
       if (data.chapterContent) {
         const cleanContent = data.chapterContent.replace(/\*/g, "");
 
@@ -172,29 +207,40 @@ function WorkspaceContent() {
             content: { ...prev.content, [chapterKey]: cleanContent },
           };
         });
+        
+        // Reset errors on success
+        setTrafficErrorLevel(0);
+        setFailedChapterKey(null);
         setPreviewChapter(chapterKey);
-      } else {
-        alert(data.error || "Failed to generate chapter.");
       }
-    } catch (err) {
-      alert("Error processing generation pipeline.");
+    } catch (err: any) {
+      if (err.message !== "TRAFFIC_STRIKE_1" && err.message !== "TRAFFIC_STRIKE_2") {
+        alert("Error processing generation pipeline: " + err.message);
+      }
     } finally {
       setGeneratingKey(null);
     }
   };
 
-  // 🚨 DYNAMIC PRICING FOR SINGLE DOWNLOADS
-  const handleDownloadSingle = async (chapterKey: string) => {
+  const handleDownloadSingle = (chapterKey: string) => {
     if (!projectId) return;
-    
-    // Preliminary pages are 5k, regular chapters are 10k
+
     const isPrelim = chapterKey.toLowerCase().includes("preliminary");
-    const price = isPrelim ? "5,000" : "10,000";
+    const price = isPrelim ? 5000 : 10000;
     const documentType = isPrelim ? "Preliminary Pages" : "Chapter";
 
-    const isPaid = window.confirm(`Redirecting to Mobile Money checkout for ${price} UGX to unlock this ${documentType}. Click OK to simulate successful payment.`);
-    if (!isPaid) return;
+    setPaymentState({
+      isActive: true,
+      amount: price,
+      description: `Unlock ${documentType} Download`,
+      onSuccess: () => {
+        setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
+        executeSingleDownload(chapterKey);
+      }
+    });
+  };
 
+  const executeSingleDownload = async (chapterKey: string) => {
     try {
       const res = await fetch("/api/compile-document", {
         method: "POST",
@@ -219,12 +265,21 @@ function WorkspaceContent() {
     }
   };
 
-  // 🚨 PRICING FOR FULL DOCUMENT
-  const handleDownloadFullDocument = async () => {
+  const handleDownloadFullDocument = () => {
     if (!projectId) return;
-    const isPaid = window.confirm(`Redirecting to Mobile Money checkout for 50,000 UGX to unlock your fully compiled Research Project. Click OK to simulate successful payment.`);
-    if (!isPaid) return;
+    
+    setPaymentState({
+      isActive: true,
+      amount: 50000,
+      description: "Unlock Complete Research Document",
+      onSuccess: () => {
+        setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
+        executeFullDownload();
+      }
+    });
+  };
 
+  const executeFullDownload = async () => {
     try {
       const res = await fetch("/api/compile-document", {
         method: "POST",
@@ -244,6 +299,64 @@ function WorkspaceContent() {
       a.remove();
     } catch (error) {
       alert("Error compiling full document.");
+    }
+  };
+
+  const editsUsed = project?.freeEditsUsed || 0;
+  const editsRemaining = Math.max(2 - editsUsed, 0);
+
+  const handleApplyCorrection = () => {
+    if (editsRemaining > 0) {
+      executeCorrection(); 
+    } else {
+      setPaymentState({
+        isActive: true,
+        amount: 5000,
+        description: "Unlock Supervisor Correction Rewrite",
+        onSuccess: () => {
+          setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
+          executeCorrection();
+        }
+      });
+    }
+  };
+
+  const executeCorrection = async () => {
+    if (!previewChapter || !projectId) return;
+    setApplyingCorrection(true);
+
+    try {
+      const res = await fetch("/api/chapters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, chapterKey: previewChapter, feedback: feedbackText }),
+      });
+
+      const data = await res.json();
+      if (data.chapterContent) {
+        const cleanContent = data.chapterContent.replace(/\*/g, "");
+        const newEditsUsed = editsUsed + 1;
+
+        setProject(prev => prev ? { 
+          ...prev, 
+          freeEditsUsed: newEditsUsed, 
+          content: { ...prev.content, [previewChapter]: cleanContent } 
+        } : null);
+
+        await setDoc(doc(db, "projects", projectId), {
+          [`content.${previewChapter}`]: cleanContent,
+          freeEditsUsed: newEditsUsed
+        }, { merge: true });
+
+        setShowFeedbackPanel(false);
+        setFeedbackText("");
+      } else {
+        alert(data.error || "Failed to apply corrections.");
+      }
+    } catch (error) {
+      alert("Error rewriting document.");
+    } finally {
+      setApplyingCorrection(false);
     }
   };
 
@@ -311,6 +424,15 @@ function WorkspaceContent() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 pb-24 relative">
+
+      {paymentState.isActive && (
+        <PaymentModal
+          amount={paymentState.amount}
+          description={paymentState.description}
+          onSuccess={paymentState.onSuccess}
+          onCancel={() => setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} })}
+        />
+      )}
 
       {lockedPopup && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
@@ -384,6 +506,7 @@ function WorkspaceContent() {
           }
 
           const isCurrentlyGenerating = generatingKey === chapter.key;
+          const hasTrafficError = failedChapterKey === chapter.key && trafficErrorLevel > 0;
 
           return (
             <div key={chapter.key} className={`border rounded-2xl overflow-hidden transition-all duration-300 flex flex-col ${bgClass}`}>
@@ -440,12 +563,49 @@ function WorkspaceContent() {
                 </div>
               </div>
 
+              {/* GENERATION LOADING STATE */}
               {isCurrentlyGenerating && (
                 <div className="bg-orange-100/50 border-t border-orange-200 px-6 py-3 flex items-center gap-3 animate-in fade-in duration-300">
                   <div className="w-4 h-4 border-2 border-[#d97706] border-t-transparent rounded-full animate-spin shrink-0" />
                   <span className="text-xs font-mono text-[#d97706] uppercase tracking-widest animate-pulse font-bold">
                     {generationQuotes[quoteIndex]}
                   </span>
+                </div>
+              )}
+
+              {/* 🚨 HIGH TRAFFIC RETRY UI */}
+              {hasTrafficError && (
+                <div className="bg-orange-50 border-t border-orange-200 px-6 py-4 flex flex-col items-center justify-center text-center animate-in slide-in-from-top-2 duration-300">
+                  {trafficErrorLevel === 1 && (
+                    <>
+                      <p className="text-orange-800 text-sm font-bold mb-3">
+                        Our System is currently facing high traffic.
+                      </p>
+                      <button 
+                        onClick={() => handleGenerateChapter(chapter.key)}
+                        className="bg-[#d97706] text-white px-6 py-2 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-[#b45309] transition-colors shadow-sm"
+                      >
+                        Retry Generation
+                      </button>
+                    </>
+                  )}
+
+                  {trafficErrorLevel === 2 && (
+                    <>
+                      <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center mb-2">
+                        <span className="text-orange-600 text-lg">⏳</span>
+                      </div>
+                      <p className="text-orange-800 text-sm font-bold mb-3 max-w-sm">
+                        We are still facing high traffic. Please try again after a few seconds.
+                      </p>
+                      <button 
+                        onClick={() => handleGenerateChapter(chapter.key)}
+                        className="text-xs font-bold text-[#d97706] uppercase tracking-widest hover:underline"
+                      >
+                        Try Again Now
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -487,7 +647,6 @@ function WorkspaceContent() {
         </Link>
       </div>
 
-      {/* EDGE-TO-EDGE PREVIEW POPUP MODAL */}
       {previewChapter && (previewChapter === "FULL_DOCUMENT" ? fullDocumentContent : project.content[previewChapter]) && (
         <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300">
 
@@ -514,7 +673,6 @@ function WorkspaceContent() {
                 <LockedDocumentViewer content={previewChapter === "FULL_DOCUMENT" ? fullDocumentContent : project.content[previewChapter]} />
               </div>
 
-              {/* Only show Supervisor corrections on individual chapters, not full doc preview */}
               {previewChapter !== "FULL_DOCUMENT" && (
                 <div className="border-t border-gray-200 bg-white p-6 sm:p-10">
                   <div className="max-w-3xl mx-auto">
@@ -532,8 +690,9 @@ function WorkspaceContent() {
                             <h4 className="font-bold text-sm text-gray-800 uppercase tracking-wider">Submit Supervisor Feedback</h4>
                             <p className="text-xs text-gray-500 mt-1">The AI will rewrite this chapter to reflect the feedback perfectly.</p>
                           </div>
-                          <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest">
-                            2 Free Edits / Topic
+                          
+                          <span className={`${editsRemaining > 0 ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-orange-50 text-orange-700 border-orange-200"} border text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest`}>
+                            {editsRemaining > 0 ? `${editsRemaining} Free Edits Left` : "5,000 UGX / Edit"}
                           </span>
                         </div>
 
@@ -545,14 +704,21 @@ function WorkspaceContent() {
                         />
 
                         <div className="flex flex-col sm:flex-row gap-3 mt-2">
-                          <button disabled={applyingCorrection || !feedbackText} className="flex-1 bg-black text-white px-4 py-3 text-xs font-bold uppercase tracking-widest hover:bg-gray-800 disabled:bg-gray-400 transition-colors rounded-lg shadow-sm">
-                            {applyingCorrection ? "Rewriting Chapter..." : "Apply Corrections (Free)"}
+                          <button 
+                            onClick={handleApplyCorrection}
+                            disabled={applyingCorrection || !feedbackText} 
+                            className="flex-1 bg-black text-white px-4 py-3 text-xs font-bold uppercase tracking-widest hover:bg-gray-800 disabled:bg-gray-400 transition-colors rounded-lg shadow-sm"
+                          >
+                            {applyingCorrection 
+                              ? "Rewriting Chapter..." 
+                              : editsRemaining > 0 
+                                ? "Apply Corrections (Free)" 
+                                : "Apply Corrections (5,000 UGX)"}
                           </button>
                           <button onClick={() => setShowFeedbackPanel(false)} className="w-full sm:w-auto bg-red-50 text-red-600 border border-red-200 px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-red-100 transition-colors rounded-lg shadow-sm">
                             Cancel
                           </button>
                         </div>
-                        <p className="text-[10px] text-gray-400 text-center uppercase tracking-widest mt-2">Subsequent edits are 5,000 UGX</p>
                       </div>
                     )}
                   </div>
