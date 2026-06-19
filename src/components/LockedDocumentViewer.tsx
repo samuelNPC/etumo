@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo } from "react";
 
 interface LockedDocumentViewerProps {
-  content: string;
+  blocks: any[]; // 🚨 NO LONGER A STRING, RECEIVES CLEAN AST ARRAY
 }
 
 const toRoman = (num: number): string => {
@@ -19,125 +19,28 @@ const toRoman = (num: number): string => {
   return roman.toLowerCase() || "i";
 };
 
-export default function LockedDocumentViewer({ content }: LockedDocumentViewerProps) {
+export default function LockedDocumentViewer({ blocks }: LockedDocumentViewerProps) {
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && ["p", "c", "a", "s"].includes(e.key.toLowerCase())) {
-        e.preventDefault();
-      }
+      if ((e.ctrlKey || e.metaKey) && ["p", "c", "a", "s"].includes(e.key.toLowerCase())) { e.preventDefault(); }
     };
     document.addEventListener("contextmenu", handleContextMenu);
     document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("contextmenu", handleContextMenu);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => { document.removeEventListener("contextmenu", handleContextMenu); document.removeEventListener("keydown", handleKeyDown); };
   }, []);
 
   const formatInlineText = (text: string) => {
     if (!text.includes("**")) return text;
     const parts = text.split(/(\*\*.*?\*\*)/g);
     return parts.map((part, i) =>
-      part.startsWith("**") && part.endsWith("**") ? (
-        <strong key={i} className="font-bold">{part.slice(2, -2)}</strong>
-      ) : part
+      part.startsWith("**") && part.endsWith("**") ? <strong key={i} className="font-bold">{part.slice(2, -2)}</strong> : part
     );
   };
 
-  // --- THE BULLETPROOF AUTO-INDEX & PAGINATION ENGINE ---
   const { finalRenderPages, tocData, lotData, lofData, finalChapterOneIdx } = useMemo(() => {
-    if (!content) return { finalRenderPages: [], tocData: [], lotData: [], lofData: [], finalChapterOneIdx: -1 };
+    if (!blocks || blocks.length === 0) return { finalRenderPages: [], tocData: [], lotData: [], lofData: [], finalChapterOneIdx: -1 };
 
-    let cleanText = content;
-
-    // 1. STRIP AI META-GARBAGE
-    cleanText = cleanText.replace(/PRELIMINARY PAGES/gi, ''); // Deletes any word Preliminary Pages
-    cleanText = cleanText.replace(/^(#\s*)?(\*\*)?APPENDICES(\*\*)?\s*$/gim, '');
-    cleanText = cleanText.replace(/\[SYSTEM_AUTO_INDEX\]/g, '');
-
-    // 2. THE NORMALIZER (Fixes the AI missing the # tags)
-    // Strip bolding from major headers first so the anchors work perfectly
-    cleanText = cleanText.replace(/\*\*(TABLE OF CONTENTS|LIST OF TABLES|LIST OF FIGURES|LIST OF ACRONYMS|DECLARATION|APPROVAL|DEDICATION|ACKNOWLEDGEMENT|ABSTRACT|CHAPTER.*?)\*\*/gim, '$1');
-    
-    // Only break the preliminary Pages basing on --- and use # to bold
-    cleanText = cleanText.replace(/^---\s*(.*)$/gim, '# $1');
-
-    // Split merged headings like "CHAPTER TWO: LITERATURE REVIEW ## 2.0 INTRODUCTION"
-    // (This catches stray # marks that the AI tried to embed in the same line)
-    cleanText = cleanText.replace(/(CHAPTER\s+[A-Z]+.*?)\s*#*\s*(\d\.0\s+INTRODUCTION)/gi, '$1\n\n## $2');
-
-    // Force Chapter headings to have the # markdown tag
-    cleanText = cleanText.replace(/^(CHAPTER\s+(ONE|TWO|THREE|FOUR|FIVE|SIX|\d+).*?)\s*$/gim, '# $1');
-
-    const rawBlocks = cleanText.split(/\n\n+/);
-    const parsedBlocks: any[] = [];
-    let currentSection = "";
-    
-    // 3. BUILD BLOCKS & PURGE FAKE AI TABLES
-    for (let i = 0; i < rawBlocks.length; i++) {
-        let blockText = rawBlocks[i].trim();
-        if (!blockText || blockText.match(/^[-*]{3,}$/)) continue;
-
-        if (blockText.includes("[PAGE BREAK]")) {
-             parsedBlocks.push({ type: 'page-break' });
-             continue;
-        }
-
-        const isTable = blockText.includes('|') && blockText.includes('\n') && /^[|\-\s:]+$/m.test(blockText);
-        
-        if (isTable) {
-             // 🚨 SURGICAL PURGE: Delete fake tables that appear inside indexes
-             if (["TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES", "LIST OF ACRONYMS"].includes(currentSection)) {
-                 continue; 
-             }
-
-             const lines = blockText.split('\n');
-             const tableStart = lines.findIndex(l => l.trim().startsWith('|'));
-             if (tableStart > 0) {
-                 parsedBlocks.push({ type: 'p', text: lines.slice(0, tableStart).join('\n') });
-             }
-             parsedBlocks.push({ type: 'table', text: lines.slice(tableStart).join('\n') });
-             continue;
-        }
-
-        if (blockText.startsWith("# ")) {
-             // Nuke ALL stray # or * marks from hitting the frontend
-             const h1Text = blockText.replace(/^#+\s*/, '').replace(/[#*]/g, '').trim();
-             currentSection = h1Text.toUpperCase(); // Track exactly what section we are in
-             
-             // 🚨 ROBUST DOUBLE HEADING KILLER
-             let isDuplicate = false;
-             for (let j = parsedBlocks.length - 1; j >= 0; j--) {
-                 if (parsedBlocks[j].type === 'page-break') continue; // Look past page breaks
-                 if (parsedBlocks[j].type === 'h1') {
-                     const prevUpper = parsedBlocks[j].text.toUpperCase();
-                     if (prevUpper === currentSection || (prevUpper.startsWith("CHAPTER") && currentSection.startsWith("CHAPTER"))) {
-                         isDuplicate = true;
-                     }
-                 }
-                 break; 
-             }
-             if (isDuplicate) continue;
-
-             parsedBlocks.push({ type: 'h1', text: h1Text });
-        } else if (blockText.startsWith("## ")) {
-             // Nuke ALL stray # or * marks from hitting the frontend
-             parsedBlocks.push({ type: 'h2', text: blockText.replace(/^#+\s*/, '').replace(/[#*]/g, '').trim() });
-        } else if (blockText.startsWith("### ")) {
-             // Nuke ALL stray # or * marks from hitting the frontend
-             parsedBlocks.push({ type: 'h3', text: blockText.replace(/^#+\s*/, '').replace(/[#*]/g, '').trim() });
-        } else {
-             if (/(?:\s|^)1\.\s+[A-Z].*?(?:\s)2\.\s+[A-Z]/g.test(blockText)) {
-                 const parts = blockText.split(/(?=\s\d\.\s+[A-Z])/);
-                 parts.forEach(part => { if (part.trim()) parsedBlocks.push({ type: 'list-item', text: part.trim() }); });
-             } else {
-                 parsedBlocks.push({ type: 'p', text: blockText });
-             }
-        }
-    }
-
-    // 4. PAGINATE BLOCKS & TRACK DATA
     const tempPages: any[][] = [];
     let currentPage: any[] = [];
     let currentHeight = 0;
@@ -157,11 +60,8 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
          }
     };
 
-    parsedBlocks.forEach((block, index) => {
-        if (block.type === 'page-break') {
-            pushPage();
-            return;
-        }
+    blocks.forEach((block, index) => {
+        if (block.type === 'page-break') { pushPage(); return; }
 
         let blockHeight = 0;
         let forceNewPage = false;
@@ -174,8 +74,6 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
              if (!["TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES", "LIST OF ACRONYMS"].includes(upperTitle)) {
                  tempToc.push({ title: block.text, level: 1, globalPageIndex: tempPages.length });
              }
-             
-             // Pinpoint Chapter One to lock the Roman Numeral math
              if (upperTitle.includes("CHAPTER ONE") || upperTitle.includes("CHAPTER 1") || upperTitle.includes("1.0 INTRODUCTION")) {
                  if (chapOneIdx === -1) chapOneIdx = tempPages.length;
              }
@@ -184,13 +82,9 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
              blockHeight = 60;
              tempToc.push({ title: block.text, level: 2, globalPageIndex: tempPages.length });
         } 
-        else if (block.type === 'h3') {
-             blockHeight = 40;
-        } 
+        else if (block.type === 'h3') { blockHeight = 40; } 
         else if (block.type === 'p') {
              blockHeight = Math.ceil(block.text.length / 90) * 24 + 16; 
-             
-             // Track List of Figures specifically from the placeholder
              const upperText = block.text.toUpperCase();
              if (upperText.includes('[INSERT') && upperText.includes('CONCEPTUAL FRAMEWORK')) {
                  tempLof.push({ title: "Conceptual Framework", globalPageIndex: tempPages.length });
@@ -198,54 +92,51 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
                  tempLof.push({ title: block.text.split('\n')[0].substring(0, 80), globalPageIndex: tempPages.length });
              }
         } 
-        else if (block.type === 'list-item') {
-             blockHeight = Math.ceil(block.text.length / 90) * 24 + 8; 
-        }
+        else if (block.type === 'list-item') { blockHeight = Math.ceil(block.text.length / 90) * 24 + 8; }
         else if (block.type === 'table') {
              blockHeight = block.text.split('\n').length * 30 + 40; 
-             
              let lotTitle = `Table ${tableCounter}`;
-             if (index > 0 && parsedBlocks[index - 1].type === 'p') {
-                 const prevText = parsedBlocks[index - 1].text.replace(/\*\*/g, '').trim();
-                 if (prevText.toLowerCase().includes('table')) {
-                     lotTitle = prevText.length > 80 ? prevText.substring(0, 80) + '...' : prevText;
-                 }
+             if (index > 0 && blocks[index - 1].type === 'p') {
+                 const prevText = blocks[index - 1].text.replace(/\*\*/g, '').trim();
+                 if (prevText.toLowerCase().includes('table')) lotTitle = prevText.length > 80 ? prevText.substring(0, 80) + '...' : prevText;
              }
              tempLot.push({ title: lotTitle, globalPageIndex: tempPages.length });
              tableCounter++;
         }
 
-        if (tempPages.length === 0 && forceNewPage && currentPage.length > 0) {
-             pushPage();
-        } else if (forceNewPage && currentPage.length > 0) {
-             pushPage();
-        } else if (currentHeight + blockHeight > MAX_PAGE_HEIGHT && currentPage.length > 0) {
-             pushPage(); 
-        }
+        if (tempPages.length === 0 && forceNewPage && currentPage.length > 0) pushPage();
+        else if (forceNewPage && currentPage.length > 0) pushPage();
+        else if (currentHeight + blockHeight > MAX_PAGE_HEIGHT && currentPage.length > 0) pushPage(); 
 
         currentPage.push(block);
         currentHeight += blockHeight;
     });
     pushPage(); 
 
-    return { finalRenderPages: tempPages, tocData: tempToc, lotData: tempLot, lofData: tempLof, finalChapterOneIdx: chapOneIdx };
-  }, [content]);
+    // Insert dynamic index flags based on original parsed headers
+    const finalPages = tempPages.map(pageBlocks => {
+        const firstBlock = pageBlocks[0];
+        if (firstBlock && firstBlock.type === 'h1') {
+            const upper = firstBlock.text.toUpperCase();
+            if (upper.includes("TABLE OF CONTENTS")) return [{ type: 'auto-toc' }];
+            if (upper.includes("LIST OF TABLES")) return [{ type: 'auto-lot' }];
+            if (upper.includes("LIST OF FIGURES")) return [{ type: 'auto-lof' }];
+        }
+        return pageBlocks;
+    });
 
-  // --- PERFECT ROMAN NUMERAL MATH ---
+    return { finalRenderPages: finalPages, tocData: tempToc, lotData: tempLot, lofData: tempLof, finalChapterOneIdx: chapOneIdx };
+  }, [blocks]);
+
   const getDisplayPageNum = (globalIndex: number) => {
-    if (globalIndex === 0) return ""; // Cover Page gets no number
-    
-    // Everything before Chapter 1 gets i, ii, iii...
-    if (finalChapterOneIdx !== -1 && globalIndex < finalChapterOneIdx) {
-      return toRoman(globalIndex);
-    }
-    // Chapter 1 and beyond get 1, 2, 3...
+    if (globalIndex === 0) return ""; 
+    if (finalChapterOneIdx !== -1 && globalIndex < finalChapterOneIdx) return toRoman(globalIndex);
     return (globalIndex - (finalChapterOneIdx !== -1 ? finalChapterOneIdx : 1) + 1).toString();
   };
 
-  // --- AUTO COMPONENTS ---
   const renderDynamicToC = () => (
     <div className="w-full font-sans py-8">
+       <h1 className="text-xl md:text-2xl font-black mb-8 uppercase tracking-widest text-center">TABLE OF CONTENTS</h1>
       {tocData.map((item, idx) => {
         if (item.globalPageIndex === 0) return null; 
         return (
@@ -260,9 +151,10 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
   );
 
   const renderDynamicLoT = () => {
-    if (lotData.length === 0) return <div className="w-full text-center py-8"><p className="text-sm text-gray-500 italic">No tables found.</p></div>;
+    if (lotData.length === 0) return <div className="w-full text-center py-8"><h1 className="text-xl md:text-2xl font-black mb-8 uppercase tracking-widest text-center">LIST OF TABLES</h1><p className="text-sm text-gray-500 italic">No tables found.</p></div>;
     return (
       <div className="w-full font-sans py-8">
+         <h1 className="text-xl md:text-2xl font-black mb-8 uppercase tracking-widest text-center">LIST OF TABLES</h1>
         {lotData.map((item, idx) => (
           <div key={`lot-${idx}`} className="flex w-full text-xs items-end mb-2 pl-6 text-gray-800">
             <span className="bg-white pr-2 whitespace-nowrap">{item.title}</span>
@@ -275,9 +167,10 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
   };
 
   const renderDynamicLoF = () => {
-    if (lofData.length === 0) return <div className="w-full text-center py-8"><p className="text-sm text-gray-500 italic">No figures found.</p></div>;
+    if (lofData.length === 0) return <div className="w-full text-center py-8"><h1 className="text-xl md:text-2xl font-black mb-8 uppercase tracking-widest text-center">LIST OF FIGURES</h1><p className="text-sm text-gray-500 italic">No figures found.</p></div>;
     return (
       <div className="w-full font-sans py-8">
+         <h1 className="text-xl md:text-2xl font-black mb-8 uppercase tracking-widest text-center">LIST OF FIGURES</h1>
         {lofData.map((item, idx) => (
           <div key={`lof-${idx}`} className="flex w-full text-xs items-end mb-2 pl-6 text-gray-800">
             <span className="bg-white pr-2 whitespace-nowrap">{item.title}</span>
@@ -330,9 +223,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     );
   };
 
-  if (!content) {
-    return <div className="p-10 text-center text-gray-500 font-mono">Select a chapter to load the preview...</div>;
-  }
+  if (!blocks || blocks.length === 0) return <div className="p-10 text-center text-gray-500 font-mono">Select a chapter to load the preview...</div>;
 
   return (
     <div className="bg-gray-200 py-6 md:py-10 px-2 md:px-10 overflow-y-auto locked-document-viewer select-none flex flex-col gap-8 md:gap-10 items-center min-h-[80vh]">
@@ -348,40 +239,21 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
             <div className={`relative z-10 font-serif text-gray-900 flex-grow ${isCoverPage ? 'flex flex-col justify-center items-center text-center space-y-12' : 'text-justify'}`}>
               
               {pageBlocks.map((block: any, bIdx: number) => {
+                if (block.type === 'auto-toc') return <div key={bIdx} className="w-full">{renderDynamicToC()}</div>;
+                if (block.type === 'auto-lot') return <div key={bIdx} className="w-full">{renderDynamicLoT()}</div>;
+                if (block.type === 'auto-lof') return <div key={bIdx} className="w-full">{renderDynamicLoF()}</div>;
+
                 if (block.type === 'table') return renderTable(block.text, bIdx);
-                
-                if (block.type === 'h1') {
-                    const upper = block.text.toUpperCase();
-                    return (
-                        <div key={bIdx} className="w-full">
-                            <h1 className={`text-xl md:text-2xl font-black mt-0 mb-8 uppercase tracking-widest ${isCoverPage ? 'text-center' : 'text-center w-full'}`}>
-                                {formatInlineText(block.text)}
-                            </h1>
-                            {/* PERFECT INJECTION: Drops our auto-lists inside the AI's header layout */}
-                            {upper === "TABLE OF CONTENTS" && renderDynamicToC()}
-                            {upper === "LIST OF TABLES" && renderDynamicLoT()}
-                            {upper === "LIST OF FIGURES" && renderDynamicLoF()}
-                        </div>
-                    );
-                }
-                
+                if (block.type === 'h1') return <h1 key={bIdx} className={`text-xl md:text-2xl font-black mt-0 mb-8 uppercase tracking-widest ${isCoverPage ? 'text-center' : 'text-center w-full'}`}>{formatInlineText(block.text)}</h1>;
                 if (block.type === 'h2') return <h2 key={bIdx} className={`text-lg md:text-xl font-bold mt-8 mb-4 ${isCoverPage ? 'text-center' : 'text-left'}`}>{formatInlineText(block.text)}</h2>;
                 if (block.type === 'h3') return <h3 key={bIdx} className={`text-base md:text-lg font-bold mt-6 mb-2 ${isCoverPage ? 'text-center' : 'text-left'}`}>{formatInlineText(block.text)}</h3>;
-
-                if (block.type === 'list-item') {
-                     return (
-                         <div key={bIdx} className="pl-6 mb-2 text-sm md:text-base leading-loose">
-                             {formatInlineText(block.text)}
-                         </div>
-                     );
-                }
+                if (block.type === 'list-item') return <div key={bIdx} className="pl-6 mb-2 text-sm md:text-base leading-loose">{formatInlineText(block.text)}</div>;
 
                 return <p key={bIdx} className={`mb-4 text-sm md:text-base leading-loose ${isCoverPage ? 'text-center font-bold text-lg' : 'text-justify'}`}>{formatInlineText(block.text)}</p>;
               })}
 
             </div>
 
-            {/* PERFECT FOOTER NUMBERING */}
             {!isCoverPage && (
               <div className="absolute bottom-[10mm] left-0 w-full text-center text-xs md:text-sm text-gray-500 font-serif">
                 {getDisplayPageNum(index)} 
