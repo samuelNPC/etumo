@@ -44,42 +44,43 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     );
   };
 
-  const { pages, toc, lot, chapterOneIndex } = useMemo(() => {
-    if (!content) return { pages: [], toc: [], lot: [], chapterOneIndex: -1 };
+  // --- THE AUTO-INDEX & PAGINATION ENGINE ---
+  const { finalRenderPages, tocData, lotData, lofData, finalChapterOneIdx } = useMemo(() => {
+    if (!content) return { finalRenderPages: [], tocData: [], lotData: [], lofData: [], finalChapterOneIdx: -1 };
 
     let cleanText = content;
-    
-    // 1. Basic cleanup of AI meta-text
     cleanText = cleanText.replace(/^(#\s*)?(\*\*)?PRELIMINARY PAGES(\*\*)?\s*$/gim, '');
     cleanText = cleanText.replace(/^(#\s*)?(\*\*)?APPENDICES(\*\*)?\s*$/gim, '');
     cleanText = cleanText.replace(/^(#\s*)?(\*\*)?(CHAPTER [A-Z]+:.*?|CHAPTER \d+:.*?)(\*\*)?\s*\n+(?=(#\s*)?(\*\*)?(CHAPTER [A-Z]+:.*?|CHAPTER \d+:.*?|1\.0\s+Introduction)(\*\*)?)/gim, '');
     cleanText = cleanText.replace(/^\*\*(CHAPTER .*?)\*\*\s*$/gim, '');
     cleanText = cleanText.replace(/\[SYSTEM_AUTO_INDEX\]/g, '');
 
-    // Force preliminary tags to act as H1s to guarantee page breaks
+    // Force preliminary headers into H1s so they get their own fresh page
     cleanText = cleanText.replace(/^---\s*(TABLE OF CONTENTS|LIST OF TABLES|LIST OF FIGURES|LIST OF ACRONYMS|DEDICATION|ACKNOWLEDGEMENT|APPROVAL|DECLARATION|ABSTRACT)/gim, '# $1');
     cleanText = cleanText.replace(/^(TABLE OF CONTENTS|LIST OF TABLES|LIST OF FIGURES|LIST OF ACRONYMS|DECLARATION|APPROVAL|DEDICATION|ACKNOWLEDGEMENT|ABSTRACT)\s*$/gim, '# $1');
 
     const rawBlocks = cleanText.split(/\n\n+/);
     const parsedBlocks: any[] = [];
-    let currentSection = "";
     
-    // 2. Build blocks and PURGE fake AI tables
-    rawBlocks.forEach((blockText) => {
-        blockText = blockText.trim();
-        if (!blockText || blockText.match(/^[-*]{3,}$/)) return;
+    // 1. Build Blocks & Nuke Fake AI Tables
+    for (let i = 0; i < rawBlocks.length; i++) {
+        let blockText = rawBlocks[i].trim();
+        if (!blockText || blockText.match(/^[-*]{3,}$/)) continue;
 
         if (blockText.includes("[PAGE BREAK]")) {
              parsedBlocks.push({ type: 'page-break' });
-             return;
+             continue;
         }
 
         const isTable = blockText.includes('|') && blockText.includes('\n') && /^[|\-\s:]+$/m.test(blockText);
-
+        
         if (isTable) {
-             // 🚨 THE PURGE: If this table is inside a generated index, DELETE IT completely.
-             if (["TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES"].includes(currentSection)) {
-                 return; // Silently drop the fake AI table
+             // 🚨 SURGICAL PURGE: If the previous block was an index header, skip this fake table entirely!
+             if (i > 0) {
+                 const prevUpper = rawBlocks[i-1].toUpperCase();
+                 if (prevUpper.includes("TABLE OF CONTENTS") || prevUpper.includes("LIST OF TABLES") || prevUpper.includes("LIST OF FIGURES") || prevUpper.includes("LIST OF ACRONYMS")) {
+                     continue; 
+                 }
              }
 
              const lines = blockText.split('\n');
@@ -88,13 +89,11 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
                  parsedBlocks.push({ type: 'p', text: lines.slice(0, tableStart).join('\n') });
              }
              parsedBlocks.push({ type: 'table', text: lines.slice(tableStart).join('\n') });
-             return;
+             continue;
         }
 
         if (blockText.startsWith("# ")) {
-             const h1Text = blockText.replace(/^#\s*/, '').replace(/\*\*/g, '').trim();
-             currentSection = h1Text.toUpperCase(); // Track what section we are in
-             parsedBlocks.push({ type: 'h1', text: h1Text });
+             parsedBlocks.push({ type: 'h1', text: blockText.replace(/^#\s*/, '').replace(/\*\*/g, '') });
         } else if (blockText.startsWith("## ")) {
              parsedBlocks.push({ type: 'h2', text: blockText.replace(/^##\s*/, '').replace(/\*\*/g, '') });
         } else if (blockText.startsWith("### ")) {
@@ -102,28 +101,28 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
         } else {
              if (/(?:\s|^)1\.\s+[A-Z].*?(?:\s)2\.\s+[A-Z]/g.test(blockText)) {
                  const parts = blockText.split(/(?=\s\d\.\s+[A-Z])/);
-                 parts.forEach(part => {
-                     if (part.trim()) parsedBlocks.push({ type: 'list-item', text: part.trim() });
-                 });
+                 parts.forEach(part => { if (part.trim()) parsedBlocks.push({ type: 'list-item', text: part.trim() }); });
              } else {
                  parsedBlocks.push({ type: 'p', text: blockText });
              }
         }
-    });
+    }
 
-    const finalPages: any[][] = [];
+    // 2. Paginate Blocks & Track Real Index Data
+    const tempPages: any[][] = [];
     let currentPage: any[] = [];
     let currentHeight = 0;
     const MAX_PAGE_HEIGHT = 800; 
     
-    const generatedToc: any[] = [];
-    const generatedLot: any[] = [];
+    const tempToc: any[] = [];
+    const tempLot: any[] = [];
+    const tempLof: any[] = []; // List of Figures
     let chapOneIdx = -1;
     let tableCounter = 1;
 
     const pushPage = () => {
          if (currentPage.length > 0) {
-              finalPages.push(currentPage);
+              tempPages.push(currentPage);
               currentPage = [];
               currentHeight = 0;
          }
@@ -143,24 +142,30 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
              forceNewPage = true; 
              
              const upperTitle = block.text.toUpperCase();
-             // Only add to TOC if it's not an index itself
+             // Exclude the indexes themselves from appearing inside the TOC
              if (!["TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES", "LIST OF ACRONYMS"].includes(upperTitle)) {
-                 generatedToc.push({ title: block.text, level: 1, globalPageIndex: finalPages.length });
+                 tempToc.push({ title: block.text, level: 1, globalPageIndex: tempPages.length });
              }
              
-             if (upperTitle.includes("CHAPTER ONE") || upperTitle.includes("CHAPTER 1")) {
-                 chapOneIdx = finalPages.length;
+             // Pinpoint Chapter One for accurate Roman Numeral shifting
+             if (upperTitle.includes("CHAPTER ONE") || upperTitle.includes("CHAPTER 1") || upperTitle.includes("1.0 INTRODUCTION")) {
+                 if (chapOneIdx === -1) chapOneIdx = tempPages.length;
              }
         } 
         else if (block.type === 'h2') {
              blockHeight = 60;
-             generatedToc.push({ title: block.text, level: 2, globalPageIndex: finalPages.length });
+             tempToc.push({ title: block.text, level: 2, globalPageIndex: tempPages.length });
         } 
         else if (block.type === 'h3') {
              blockHeight = 40;
         } 
         else if (block.type === 'p') {
              blockHeight = Math.ceil(block.text.length / 90) * 24 + 16; 
+             
+             // Track List of Figures
+             if (block.text.trim().toUpperCase().startsWith('FIGURE')) {
+                 tempLof.push({ title: block.text.split('\n')[0].substring(0, 80), globalPageIndex: tempPages.length });
+             }
         } 
         else if (block.type === 'list-item') {
              blockHeight = Math.ceil(block.text.length / 90) * 24 + 8; 
@@ -172,14 +177,14 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
              if (index > 0 && parsedBlocks[index - 1].type === 'p') {
                  const prevText = parsedBlocks[index - 1].text.replace(/\*\*/g, '').trim();
                  if (prevText.toLowerCase().includes('table')) {
-                     lotTitle = prevText.length > 60 ? prevText.substring(0, 60) + '...' : prevText;
+                     lotTitle = prevText.length > 80 ? prevText.substring(0, 80) + '...' : prevText;
                  }
              }
-             generatedLot.push({ title: lotTitle, globalPageIndex: finalPages.length });
+             tempLot.push({ title: lotTitle, globalPageIndex: tempPages.length });
              tableCounter++;
         }
 
-        if (finalPages.length === 0 && forceNewPage && currentPage.length > 0) {
+        if (tempPages.length === 0 && forceNewPage && currentPage.length > 0) {
              pushPage();
         } else if (forceNewPage && currentPage.length > 0) {
              pushPage();
@@ -190,44 +195,76 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
         currentPage.push(block);
         currentHeight += blockHeight;
     });
-    
     pushPage(); 
 
-    return { pages: finalPages, toc: generatedToc, lot: generatedLot, chapterOneIndex: chapOneIdx };
+    // 3. INLINE REPLACEMENT (Perfectly slots our auto-indexes into the AI's intended locations)
+    const finalPages = tempPages.map(pageBlocks => {
+        const firstBlock = pageBlocks[0];
+        if (firstBlock && firstBlock.type === 'h1') {
+            const upper = firstBlock.text.toUpperCase();
+            if (upper.includes("TABLE OF CONTENTS")) return [{ type: 'auto-toc' }];
+            if (upper.includes("LIST OF TABLES")) return [{ type: 'auto-lot' }];
+            if (upper.includes("LIST OF FIGURES")) return [{ type: 'auto-lof' }];
+            // List of Acronyms stays as is, because it's text-based and we want the AI's output
+        }
+        return pageBlocks;
+    });
+
+    return { finalRenderPages: finalPages, tocData: tempToc, lotData: tempLot, lofData: tempLof, finalChapterOneIdx: chapOneIdx };
   }, [content]);
 
-  // --- STRICT PAGE NUMBERING (Roman before Chapter 1, Arabic after) ---
+  // --- PERFECT ROMAN NUMERAL MATH ---
   const getDisplayPageNum = (globalIndex: number) => {
     if (globalIndex === 0) return ""; 
-    if (chapterOneIndex !== -1 && globalIndex < chapterOneIndex) {
+    
+    // Everything before Chapter 1 gets i, ii, iii...
+    if (finalChapterOneIdx !== -1 && globalIndex < finalChapterOneIdx) {
       return toRoman(globalIndex);
     }
-    return (globalIndex - (chapterOneIndex !== -1 ? chapterOneIndex : 1) + 1).toString();
+    // Chapter 1 and beyond get 1, 2, 3...
+    return (globalIndex - (finalChapterOneIdx !== -1 ? finalChapterOneIdx : 1) + 1).toString();
   };
 
-  const renderDynamicToC = () => {
+  // --- AUTO COMPONENTS ---
+  const renderDynamicToC = () => (
+    <div className="w-full font-sans py-8">
+       <h1 className="text-xl md:text-2xl font-black mb-8 uppercase tracking-widest text-center">TABLE OF CONTENTS</h1>
+      {tocData.map((item, idx) => {
+        if (item.globalPageIndex === 0) return null; 
+        return (
+          <div key={`toc-${idx}`} className={`flex w-full text-xs items-end mb-2 ${item.level === 1 ? 'font-bold mt-4' : 'pl-6 text-gray-800'}`}>
+            <span className="bg-white pr-2 whitespace-nowrap">{item.title}</span>
+            <span className="flex-grow border-b-[2px] border-dotted border-gray-400 relative -top-1 mx-1"></span>
+            <span className="bg-white pl-2 font-medium">{getDisplayPageNum(item.globalPageIndex)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const renderDynamicLoT = () => {
+    if (lotData.length === 0) return <div className="w-full text-center py-8"><h1 className="text-xl font-black mb-4 uppercase">LIST OF TABLES</h1><p className="text-sm text-gray-500 italic">No tables found.</p></div>;
     return (
-      <div className="w-full font-sans mb-8">
-        {toc.map((item, idx) => {
-          if (item.globalPageIndex === 0) return null; 
-          return (
-            <div key={`toc-${idx}`} className={`flex w-full text-xs items-end mb-2 ${item.level === 1 ? 'font-bold mt-4' : 'pl-6 text-gray-800'}`}>
-              <span className="bg-white pr-2 whitespace-nowrap">{item.title}</span>
-              <span className="flex-grow border-b-[2px] border-dotted border-gray-400 relative -top-1 mx-1"></span>
-              <span className="bg-white pl-2 font-medium">{getDisplayPageNum(item.globalPageIndex)}</span>
-            </div>
-          );
-        })}
+      <div className="w-full font-sans py-8">
+         <h1 className="text-xl md:text-2xl font-black mb-8 uppercase tracking-widest text-center">LIST OF TABLES</h1>
+        {lotData.map((item, idx) => (
+          <div key={`lot-${idx}`} className="flex w-full text-xs items-end mb-2 pl-6 text-gray-800">
+            <span className="bg-white pr-2 whitespace-nowrap">{item.title}</span>
+            <span className="flex-grow border-b-[2px] border-dotted border-gray-400 relative -top-1 mx-1"></span>
+            <span className="bg-white pl-2 font-medium">{getDisplayPageNum(item.globalPageIndex)}</span>
+          </div>
+        ))}
       </div>
     );
   };
 
-  const renderDynamicLoT = () => {
-    if (lot.length === 0) return <p className="text-center text-sm text-gray-500 italic mt-4">No tables found in this document.</p>;
+  const renderDynamicLoF = () => {
+    if (lofData.length === 0) return <div className="w-full text-center py-8"><h1 className="text-xl font-black mb-4 uppercase">LIST OF FIGURES</h1><p className="text-sm text-gray-500 italic">No figures found.</p></div>;
     return (
-      <div className="w-full font-sans mb-8">
-        {lot.map((item, idx) => (
-          <div key={`lot-${idx}`} className="flex w-full text-xs items-end mb-2 pl-6 text-gray-800">
+      <div className="w-full font-sans py-8">
+         <h1 className="text-xl md:text-2xl font-black mb-8 uppercase tracking-widest text-center">LIST OF FIGURES</h1>
+        {lofData.map((item, idx) => (
+          <div key={`lof-${idx}`} className="flex w-full text-xs items-end mb-2 pl-6 text-gray-800">
             <span className="bg-white pr-2 whitespace-nowrap">{item.title}</span>
             <span className="flex-grow border-b-[2px] border-dotted border-gray-400 relative -top-1 mx-1"></span>
             <span className="bg-white pl-2 font-medium">{getDisplayPageNum(item.globalPageIndex)}</span>
@@ -251,7 +288,6 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     };
 
     return (
-      // 🚨 TABLE CUT-OFF FIX: table-fixed, break-words, whitespace-normal
       <div key={keyIndex} className="w-full max-w-full overflow-x-auto my-6 bg-white">
         <table className="w-full border-collapse border border-gray-400 text-[10px] md:text-xs text-left font-sans table-fixed break-words">
           {hasHeader && cleanRows.length > 0 && (
@@ -285,7 +321,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
 
   return (
     <div className="bg-gray-200 py-6 md:py-10 px-2 md:px-10 overflow-y-auto locked-document-viewer select-none flex flex-col gap-8 md:gap-10 items-center min-h-[80vh]">
-      {pages.map((pageBlocks, index) => {
+      {finalRenderPages.map((pageBlocks, index) => {
         const isCoverPage = index === 0;
 
         return (
@@ -297,22 +333,13 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
             <div className={`relative z-10 font-serif text-gray-900 flex-grow ${isCoverPage ? 'flex flex-col justify-center items-center text-center space-y-12' : 'text-justify'}`}>
               
               {pageBlocks.map((block: any, bIdx: number) => {
+                if (block.type === 'auto-toc') return <div key={bIdx} className="w-full">{renderDynamicToC()}</div>;
+                if (block.type === 'auto-lot') return <div key={bIdx} className="w-full">{renderDynamicLoT()}</div>;
+                if (block.type === 'auto-lof') return <div key={bIdx} className="w-full">{renderDynamicLoF()}</div>;
+
                 if (block.type === 'table') return renderTable(block.text, bIdx);
                 
-                if (block.type === 'h1') {
-                    const upper = block.text.toUpperCase();
-                    return (
-                        <div key={bIdx} className="w-full">
-                            <h1 className={`text-xl md:text-2xl font-black mt-0 mb-8 uppercase tracking-widest ${isCoverPage ? 'text-center' : 'text-center w-full'}`}>
-                                {formatInlineText(block.text)}
-                            </h1>
-                            {/* INLINE INJECTION: Renders our perfect lists exactly where the AI put the heading */}
-                            {upper === "TABLE OF CONTENTS" && renderDynamicToC()}
-                            {upper === "LIST OF TABLES" && renderDynamicLoT()}
-                        </div>
-                    );
-                }
-                
+                if (block.type === 'h1') return <h1 key={bIdx} className={`text-xl md:text-2xl font-black mt-0 mb-8 uppercase tracking-widest ${isCoverPage ? 'text-center' : 'text-center w-full'}`}>{formatInlineText(block.text)}</h1>;
                 if (block.type === 'h2') return <h2 key={bIdx} className={`text-lg md:text-xl font-bold mt-8 mb-4 ${isCoverPage ? 'text-center' : 'text-left'}`}>{formatInlineText(block.text)}</h2>;
                 if (block.type === 'h3') return <h3 key={bIdx} className={`text-base md:text-lg font-bold mt-6 mb-2 ${isCoverPage ? 'text-center' : 'text-left'}`}>{formatInlineText(block.text)}</h3>;
 
@@ -329,7 +356,6 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
 
             </div>
 
-            {/* PAGE NUMBER FOOTER */}
             {!isCoverPage && (
               <div className="absolute bottom-[10mm] left-0 w-full text-center text-xs md:text-sm text-gray-500 font-serif">
                 {getDisplayPageNum(index)} 
