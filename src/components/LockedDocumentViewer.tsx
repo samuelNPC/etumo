@@ -32,25 +32,27 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
       const trimmedLine = line.trim();
       if (!trimmedLine) return <br key={idx} />;
 
-      // Handle H1 / Chapter Titles & Preliminary Pages
-      // mt-0 applied since these start at the top of a fresh page now
+      // Safety catch: completely hide any stray markdown dividers that sneak through
+      if (trimmedLine === "---" || trimmedLine === "***") return null;
+
+      // Handle H1 / Chapter Titles
       if (trimmedLine.startsWith("# ")) {
-        return <h1 key={idx} className="text-2xl font-black mt-0 mb-8 text-center uppercase tracking-widest">{trimmedLine.replace("# ", "")}</h1>;
+        return <h1 key={idx} className="text-xl md:text-2xl font-black mt-0 mb-6 md:mb-8 text-center uppercase tracking-widest">{trimmedLine.replace("# ", "")}</h1>;
       }
       // Handle H2
       if (trimmedLine.startsWith("## ")) {
-        return <h2 key={idx} className="text-xl font-bold mt-8 mb-4">{trimmedLine.replace("## ", "")}</h2>;
+        return <h2 key={idx} className="text-lg md:text-xl font-bold mt-6 md:mt-8 mb-3 md:mb-4">{trimmedLine.replace("## ", "")}</h2>;
       }
       // Handle H3
       if (trimmedLine.startsWith("### ")) {
-        return <h3 key={idx} className="text-lg font-bold mt-6 mb-3">{trimmedLine.replace("### ", "")}</h3>;
+        return <h3 key={idx} className="text-base md:text-lg font-bold mt-4 md:mt-6 mb-2 md:mb-3">{trimmedLine.replace("### ", "")}</h3>;
       }
 
-      // Handle Bolding within paragraphs (basic regex to replace **text** with <strong>text</strong>)
+      // Handle Bolding within paragraphs
       if (trimmedLine.includes("**")) {
         const parts = trimmedLine.split(/(\*\*.*?\*\*)/g);
         return (
-          <p key={idx} className="mb-4 text-[16px] leading-[2] text-justify">
+          <p key={idx} className="mb-4 text-sm md:text-[16px] leading-[2] text-justify">
             {parts.map((part, i) => 
               part.startsWith("**") && part.endsWith("**") 
                 ? <strong key={i} className="font-bold">{part.slice(2, -2)}</strong> 
@@ -60,7 +62,8 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
         );
       }
 
-      return <p key={idx} className="mb-4 text-[16px] leading-[2] text-justify">{line}</p>;
+      // Apply text-sm on mobile and 16px on desktop for readability
+      return <p key={idx} className="mb-4 text-sm md:text-[16px] leading-[2] text-justify">{line}</p>;
     });
   };
 
@@ -68,29 +71,33 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     return <div className="p-10 text-center text-gray-500 font-mono">Select a chapter to load the preview...</div>;
   }
 
-  // 🚨 AUTO-PAGINATION ENGINE
-  // 1. Convert explicit [PAGE BREAK] tags to a safe delimiter
-  // 2. Automatically inject a page break right before ANY Heading 1 (# )
-  // 3. Filter out any empty pages caused by the splits
-  const pages = content
+  // 🚨 CLEANUP FILTER: Strip out meta-headings before processing
+  // This removes lines that are exactly "PRELIMINARY PAGES" or "APPENDICES" (with or without #)
+  const cleanContent = content
+    .replace(/^(#\s*)?PRELIMINARY PAGES$/gim, '')
+    .replace(/^(#\s*)?APPENDICES$/gim, '');
+
+  // 🚨 ENHANCED AUTO-PAGINATION ENGINE
+  const pages = cleanContent
     .replace(/\[PAGE BREAK\]/gi, '___PAGE_BREAK___') 
+    .replace(/\n\s*---\s*\n/g, '\n___PAGE_BREAK___\n') // Catches the --- markdown dividers
     .replace(/\n# /g, '\n___PAGE_BREAK___\n# ') 
     .replace(/^# /, '___PAGE_BREAK___\n# ') 
     .split('___PAGE_BREAK___')
     .filter(page => page.trim().length > 0); 
 
   return (
-    // Outer container simulates the gray background of Microsoft Word Print Layout
-    <div className="bg-gray-200 py-10 px-4 sm:px-10 overflow-y-auto locked-document-viewer select-none flex flex-col gap-8 items-center min-h-[80vh]">
+    // Adjusted container padding for mobile viewing
+    <div className="bg-gray-200 py-6 md:py-10 px-2 md:px-10 overflow-y-auto locked-document-viewer select-none flex flex-col gap-6 md:gap-8 items-center min-h-[80vh]">
 
       {pages.map((pageContent, index) => {
         return (
-          // 🚨 Individual A4 Page Container (1-inch margins: 25.4mm)
+          // 🚨 RESPONSIVE A4 PAGE CONTAINER
           <div 
             key={index} 
-            className="relative bg-white shadow-xl w-full max-w-[210mm] min-h-[297mm] px-[25.4mm] py-[25.4mm] pointer-events-none"
+            className="relative bg-white shadow-xl w-full max-w-[210mm] min-h-[297mm] px-6 py-10 md:px-[25.4mm] md:py-[25.4mm] pointer-events-none"
           >
-            {/* Embedded Security Watermark per page */}
+            {/* Embedded Security Watermark */}
             <div 
               className="absolute inset-0 pointer-events-none opacity-[0.05] flex items-center justify-center text-center z-0 overflow-hidden"
               style={{ 
@@ -104,8 +111,8 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
               {formatText(pageContent)}
             </div>
 
-            {/* Page Number (Visual only) */}
-            <div className="absolute bottom-[15mm] left-0 w-full text-center text-sm text-gray-500 font-serif">
+            {/* Page Number */}
+            <div className="absolute bottom-[10mm] md:bottom-[15mm] left-0 w-full text-center text-xs md:text-sm text-gray-500 font-serif">
               {index + 1}
             </div>
           </div>
