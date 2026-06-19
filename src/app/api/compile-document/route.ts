@@ -10,7 +10,6 @@ export async function POST(req: Request) {
 
     const docChildren: (docx.Paragraph | docx.Table)[] = [];
 
-    // Helper: Parses inline bolding and italics for Word elements
     const parseInlineText = (text: string, forceBold: boolean = false): docx.TextRun[] => {
       const runs: docx.TextRun[] = [];
       let currentIdx = 0;
@@ -18,30 +17,21 @@ export async function POST(req: Request) {
       let match;
 
       while ((match = regex.exec(text)) !== null) {
-        if (match.index > currentIdx) {
-          runs.push(new docx.TextRun({ text: text.substring(currentIdx, match.index), size: 24, font: "Times New Roman", bold: forceBold }));
-        }
-
+        if (match.index > currentIdx) runs.push(new docx.TextRun({ text: text.substring(currentIdx, match.index), size: 24, font: "Times New Roman", bold: forceBold }));
         const matchedText = match[0];
-        if (matchedText.startsWith("**")) {
-          runs.push(new docx.TextRun({ text: matchedText.slice(2, -2), bold: true, size: 24, font: "Times New Roman" }));
-        } else if (matchedText.startsWith("*")) {
-          runs.push(new docx.TextRun({ text: matchedText.slice(1, -1), italics: true, size: 24, font: "Times New Roman", bold: forceBold }));
-        }
+        if (matchedText.startsWith("**")) runs.push(new docx.TextRun({ text: matchedText.slice(2, -2), bold: true, size: 24, font: "Times New Roman" }));
+        else if (matchedText.startsWith("*")) runs.push(new docx.TextRun({ text: matchedText.slice(1, -1), italics: true, size: 24, font: "Times New Roman", bold: forceBold }));
         currentIdx = regex.lastIndex;
       }
 
-      if (currentIdx < text.length) {
-        runs.push(new docx.TextRun({ text: text.substring(currentIdx), size: 24, font: "Times New Roman", bold: forceBold }));
-      }
+      if (currentIdx < text.length) runs.push(new docx.TextRun({ text: text.substring(currentIdx), size: 24, font: "Times New Roman", bold: forceBold }));
       return runs;
     };
 
-    // 🚨 NEW AST ENGINE: Compiles JSON block arrays perfectly into Word format
     const processBlocksToElements = (blocks: any[]) => {
       const elements: (docx.Paragraph | docx.Table)[] = [];
 
-      blocks.forEach(block => {
+      blocks.forEach((block) => {
         if (block.type === 'page-break') {
             elements.push(new docx.Paragraph({ text: "", pageBreakBefore: true }));
         } 
@@ -49,45 +39,26 @@ export async function POST(req: Request) {
             elements.push(new docx.Paragraph({ 
                 text: block.text.toUpperCase(), 
                 heading: docx.HeadingLevel.HEADING_1, 
-                spacing: { before: 400, after: 200 } 
+                spacing: { before: 400, after: 200 },
+                // 🚨 FORCE PAGE BREAK: Every H1 gets its own page perfectly!
+                pageBreakBefore: elements.length > 0 
             }));
         } 
         else if (block.type === 'h2') {
-            elements.push(new docx.Paragraph({ 
-                text: block.text, 
-                heading: docx.HeadingLevel.HEADING_2, 
-                spacing: { before: 300, after: 100 } 
-            }));
+            elements.push(new docx.Paragraph({ text: block.text, heading: docx.HeadingLevel.HEADING_2, spacing: { before: 300, after: 100 } }));
         } 
         else if (block.type === 'h3') {
-            elements.push(new docx.Paragraph({ 
-                text: block.text, 
-                heading: docx.HeadingLevel.HEADING_3, 
-                spacing: { before: 200, after: 100 } 
-            }));
+            elements.push(new docx.Paragraph({ text: block.text, heading: docx.HeadingLevel.HEADING_3, spacing: { before: 200, after: 100 } }));
         } 
         else if (block.type === 'p') {
             if (block.text.includes("[INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE]")) {
-                elements.push(new docx.Paragraph({ 
-                    children: [new docx.TextRun({ text: "[INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE]", bold: true, color: "D97706", size: 24, font: "Times New Roman" })], 
-                    alignment: docx.AlignmentType.CENTER, 
-                    spacing: { before: 400, after: 400 }
-                }));
+                elements.push(new docx.Paragraph({ children: [new docx.TextRun({ text: "[INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE]", bold: true, color: "D97706", size: 24, font: "Times New Roman" })], alignment: docx.AlignmentType.CENTER, spacing: { before: 400, after: 400 } }));
             } else {
-                elements.push(new docx.Paragraph({ 
-                    children: parseInlineText(block.text), 
-                    spacing: { after: 200, line: 360 }, 
-                    alignment: docx.AlignmentType.JUSTIFIED 
-                }));
+                elements.push(new docx.Paragraph({ children: parseInlineText(block.text), spacing: { after: 200, line: 360 }, alignment: docx.AlignmentType.JUSTIFIED }));
             }
         } 
         else if (block.type === 'list-item') {
-            elements.push(new docx.Paragraph({ 
-                children: parseInlineText(block.text), 
-                spacing: { after: 100, line: 360 }, 
-                alignment: docx.AlignmentType.LEFT, 
-                bullet: { level: 0 } 
-            }));
+            elements.push(new docx.Paragraph({ children: parseInlineText(block.text), spacing: { after: 100, line: 360 }, alignment: docx.AlignmentType.LEFT, bullet: { level: 0 } }));
         } 
         else if (block.type === 'table') {
             const rows = block.text.split('\n').filter((r: string) => !/^[|\-\s:]+$/.test(r.trim()) && r.includes('-'));
@@ -106,11 +77,7 @@ export async function POST(req: Request) {
                         children: row.map(cellText => new docx.TableCell({
                             margins: { top: 100, bottom: 100, left: 100, right: 100 },
                             shading: isHeader ? { fill: "F3F4F6", type: docx.ShadingType.CLEAR, color: "auto" } : undefined,
-                            children: [new docx.Paragraph({ 
-                                children: parseInlineText(cellText, isHeader), 
-                                alignment: isHeader ? docx.AlignmentType.CENTER : docx.AlignmentType.LEFT, 
-                                spacing: { after: 0, line: 240 } 
-                            })]
+                            children: [new docx.Paragraph({ children: parseInlineText(cellText, isHeader), alignment: isHeader ? docx.AlignmentType.CENTER : docx.AlignmentType.LEFT, spacing: { after: 0, line: 240 } })]
                         }))
                     });
                 })
@@ -121,7 +88,6 @@ export async function POST(req: Request) {
       return elements;
     };
 
-    // 🚨 ORIGINALITY CENTER BYPASS (Maintains the old string parser strictly for this tool)
     if (rawText) {
       const processTextToElements = (text: string) => {
         const lines = text.split("\n");
@@ -136,11 +102,7 @@ export async function POST(req: Request) {
               rows: tableRowsData.map((row, rowIndex) => {
                 const isHeader = rowIndex === 0;
                 return new docx.TableRow({
-                  children: row.map(cellText => new docx.TableCell({
-                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
-                    shading: isHeader ? { fill: "F3F4F6", type: docx.ShadingType.CLEAR, color: "auto" } : undefined,
-                    children: [new docx.Paragraph({ children: parseInlineText(cellText, isHeader), alignment: isHeader ? docx.AlignmentType.CENTER : docx.AlignmentType.LEFT, spacing: { after: 0, line: 240 } })]
-                  }))
+                  children: row.map(cellText => new docx.TableCell({ margins: { top: 100, bottom: 100, left: 100, right: 100 }, shading: isHeader ? { fill: "F3F4F6", type: docx.ShadingType.CLEAR, color: "auto" } : undefined, children: [new docx.Paragraph({ children: parseInlineText(cellText, isHeader), alignment: isHeader ? docx.AlignmentType.CENTER : docx.AlignmentType.LEFT, spacing: { after: 0, line: 240 } })] }))
                 });
               })
             }));
@@ -182,22 +144,14 @@ export async function POST(req: Request) {
           const isBullet = /^[\*\-]\s+(.*)/.exec(trimmed);
           let contentText = isBullet ? isBullet[1] : trimmed;
           const paraOptions: any = { children: parseInlineText(contentText), spacing: { after: 200, line: 360 }, alignment: docx.AlignmentType.JUSTIFIED };
-          
-          if (isBullet) {
-              paraOptions.bullet = { level: 0 };
-              paraOptions.alignment = docx.AlignmentType.LEFT;
-          }
+          if (isBullet) { paraOptions.bullet = { level: 0 }; paraOptions.alignment = docx.AlignmentType.LEFT; }
           elements.push(new docx.Paragraph(paraOptions));
         }
         if (inTable) flushTable();
         return elements;
       };
 
-      if (rawTitle) {
-        docChildren.push(
-          new docx.Paragraph({ children: [new docx.TextRun({ text: rawTitle.toUpperCase(), bold: true, size: 32, font: "Times New Roman" })], alignment: docx.AlignmentType.CENTER, spacing: { after: 800 } })
-        );
-      }
+      if (rawTitle) docChildren.push(new docx.Paragraph({ children: [new docx.TextRun({ text: rawTitle.toUpperCase(), bold: true, size: 32, font: "Times New Roman" })], alignment: docx.AlignmentType.CENTER, spacing: { after: 800 } }));
       docChildren.push(...processTextToElements(rawText));
 
       const document = new docx.Document({ creator: "Etumo Engine", title: rawTitle || "Remediated Document", sections: [{ properties: {}, children: docChildren }] });
@@ -205,70 +159,38 @@ export async function POST(req: Request) {
       return new NextResponse(buffer, { status: 200, headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "Content-Disposition": `attachment; filename="Remediated_Document.docx"` } });
     }
 
-    // --- MAIN WORKSPACE LOGIC (Uses AST Arrays) ---
-    if (!projectId || !chapterKey || !structure) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-    }
+    if (!projectId || !chapterKey || !structure) return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
 
     const docRef = doc(db, "projects", projectId);
     const docSnap = await getDoc(docRef);
 
-    if (!docSnap.exists()) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
-    }
+    if (!docSnap.exists()) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
     const data = docSnap.data();
     const contentData = data.content || {};
 
     if (isFullDocument) {
-      docChildren.push(
-        new docx.Paragraph({
-          children: [new docx.TextRun({ text: data.topic?.toUpperCase() || "RESEARCH PROJECT", bold: true, size: 32, font: "Times New Roman" })],
-          alignment: docx.AlignmentType.CENTER,
-          spacing: { after: 800 },
-        })
-      );
+      docChildren.push(new docx.Paragraph({ children: [new docx.TextRun({ text: data.topic?.toUpperCase() || "RESEARCH PROJECT", bold: true, size: 32, font: "Times New Roman" })], alignment: docx.AlignmentType.CENTER, spacing: { after: 800 } }));
 
       structure.forEach((chapter: any, index: number) => {
         if (chapter.key === "guidelines") return;
         const chapterBlocks = contentData[chapter.key];
 
         if (chapterBlocks) {
-          if (index > 1) { 
-            docChildren.push(new docx.Paragraph({ text: "", pageBreakBefore: true }));
-          }
+          if (index > 1) docChildren.push(new docx.Paragraph({ text: "", pageBreakBefore: true }));
           docChildren.push(...processBlocksToElements(chapterBlocks));
         }
       });
-
     } else {
       const singleChapterBlocks = contentData[chapterKey];
-      if (!singleChapterBlocks) {
-        return NextResponse.json({ error: "Chapter content not found" }, { status: 404 });
-      }
+      if (!singleChapterBlocks) return NextResponse.json({ error: "Chapter content not found" }, { status: 404 });
       docChildren.push(...processBlocksToElements(singleChapterBlocks));
     }
 
-    const document = new docx.Document({
-      creator: "Etumo Engine",
-      title: data.topic || "Research Document",
-      sections: [
-        {
-          properties: {},
-          children: docChildren,
-        },
-      ],
-    });
-
+    const document = new docx.Document({ creator: "Etumo Engine", title: data.topic || "Research Document", sections: [{ properties: {}, children: docChildren }] });
     const buffer = await docx.Packer.toBuffer(document);
 
-    return new NextResponse(buffer, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "Content-Disposition": `attachment; filename="Etumo_Research_Document.docx"`,
-      },
-    });
+    return new NextResponse(buffer, { status: 200, headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "Content-Disposition": `attachment; filename="Etumo_Research_Document.docx"` } });
 
   } catch (error) {
     console.error("Export API Error:", error);
