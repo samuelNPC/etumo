@@ -191,34 +191,36 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
   }
 
   // 🚨 3. ACADEMIC NUMBERING ENGINE
-  // Find where the main document starts to switch from Roman (i) to Arabic (1)
   const firstChapterIndex = pages.findIndex(page => /^#\s*CHAPTER\b/im.test(page));
-  
-  // If we don't find a chapter, are we ONLY previewing preliminary pages?
   const isPrelimOnly = firstChapterIndex === -1 && pages.some(page => 
     pageBreakTriggers.some(trigger => page.toUpperCase().includes(`# ${trigger}`))
   );
+  
+  // Does this preview include a Cover Page at the start?
+  const hasCoverPage = (firstChapterIndex > 0 || isPrelimOnly);
 
   return (
     <div className="bg-gray-200 py-6 md:py-10 px-2 md:px-10 overflow-y-auto locked-document-viewer select-none flex flex-col gap-6 md:gap-8 items-center min-h-[80vh]">
 
       {pages.map((pageContent, index) => {
-        // Determine the correct page number based on index and chapter location
         let displayPageNumber = "";
         
-        if (firstChapterIndex !== -1) {
+        if (hasCoverPage && index === 0) {
+          // Hide number on Cover Page
+          displayPageNumber = ""; 
+        } else if (firstChapterIndex !== -1) {
           // Mixed Document (Full Compilation)
           if (index < firstChapterIndex) {
-            displayPageNumber = toRoman(index + 1); // Preliminary pages get Roman
+            displayPageNumber = toRoman(index); // Cover page was 0, so index 1 becomes 'i'
           } else {
             displayPageNumber = (index - firstChapterIndex + 1).toString(); // Chapters reset to 1
           }
         } else {
           // Isolated Preview
           if (isPrelimOnly) {
-            displayPageNumber = toRoman(index + 1);
+            displayPageNumber = toRoman(index); // Cover page was 0, so index 1 becomes 'i'
           } else {
-            displayPageNumber = (index + 1).toString();
+            displayPageNumber = (index + 1).toString(); // Standard Chapter preview (no cover page)
           }
         }
 
