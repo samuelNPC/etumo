@@ -7,6 +7,7 @@ interface LockedDocumentViewerProps {
 }
 
 const toRoman = (num: number): string => {
+  if (num <= 0) return "";
   const lookup: { [key: string]: number } = { M: 1000, CM: 900, D: 500, CD: 400, C: 100, XC: 90, L: 50, XL: 40, X: 10, IX: 9, V: 5, IV: 4, I: 1 };
   let roman = '';
   for (let i in lookup) {
@@ -44,25 +45,33 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     );
   };
 
-  // --- THE AUTO-INDEX & PAGINATION ENGINE ---
+  // --- THE BULLETPROOF AUTO-INDEX & PAGINATION ENGINE ---
   const { finalRenderPages, tocData, lotData, lofData, finalChapterOneIdx } = useMemo(() => {
     if (!content) return { finalRenderPages: [], tocData: [], lotData: [], lofData: [], finalChapterOneIdx: -1 };
 
     let cleanText = content;
+
+    // 1. STRIP AI META-GARBAGE
     cleanText = cleanText.replace(/^(#\s*)?(\*\*)?PRELIMINARY PAGES(\*\*)?\s*$/gim, '');
     cleanText = cleanText.replace(/^(#\s*)?(\*\*)?APPENDICES(\*\*)?\s*$/gim, '');
-    cleanText = cleanText.replace(/^(#\s*)?(\*\*)?(CHAPTER [A-Z]+:.*?|CHAPTER \d+:.*?)(\*\*)?\s*\n+(?=(#\s*)?(\*\*)?(CHAPTER [A-Z]+:.*?|CHAPTER \d+:.*?|1\.0\s+Introduction)(\*\*)?)/gim, '');
-    cleanText = cleanText.replace(/^\*\*(CHAPTER .*?)\*\*\s*$/gim, '');
     cleanText = cleanText.replace(/\[SYSTEM_AUTO_INDEX\]/g, '');
 
-    // Force preliminary headers into H1s so they get their own fresh page
-    cleanText = cleanText.replace(/^---\s*(TABLE OF CONTENTS|LIST OF TABLES|LIST OF FIGURES|LIST OF ACRONYMS|DEDICATION|ACKNOWLEDGEMENT|APPROVAL|DECLARATION|ABSTRACT)/gim, '# $1');
+    // 2. THE NORMALIZER (Fixes the AI missing the # tags)
+    // Strip bolding from major headers first so the anchors work perfectly
+    cleanText = cleanText.replace(/\*\*(TABLE OF CONTENTS|LIST OF TABLES|LIST OF FIGURES|LIST OF ACRONYMS|DECLARATION|APPROVAL|DEDICATION|ACKNOWLEDGEMENT|ABSTRACT|CHAPTER.*?)\*\*/gim, '$1');
+    
+    // Force all known major headers to have the # markdown tag
     cleanText = cleanText.replace(/^(TABLE OF CONTENTS|LIST OF TABLES|LIST OF FIGURES|LIST OF ACRONYMS|DECLARATION|APPROVAL|DEDICATION|ACKNOWLEDGEMENT|ABSTRACT)\s*$/gim, '# $1');
+    cleanText = cleanText.replace(/^(CHAPTER\s+(ONE|TWO|THREE|FOUR|FIVE|SIX|\d+).*?)\s*$/gim, '# $1');
+
+    // Remove duplicate adjacent Chapter headings (e.g. # CHAPTER ONE\n# CHAPTER ONE)
+    cleanText = cleanText.replace(/^(#\s*CHAPTER[^\n]+)\n+(?:#\s*CHAPTER[^\n]+|CHAPTER[^\n]+)\n+/gim, '$1\n\n');
 
     const rawBlocks = cleanText.split(/\n\n+/);
     const parsedBlocks: any[] = [];
+    let currentSection = "";
     
-    // 1. Build Blocks & Nuke Fake AI Tables
+    // 3. BUILD BLOCKS & PURGE FAKE AI TABLES
     for (let i = 0; i < rawBlocks.length; i++) {
         let blockText = rawBlocks[i].trim();
         if (!blockText || blockText.match(/^[-*]{3,}$/)) continue;
@@ -75,12 +84,9 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
         const isTable = blockText.includes('|') && blockText.includes('\n') && /^[|\-\s:]+$/m.test(blockText);
         
         if (isTable) {
-             // 🚨 SURGICAL PURGE: If the previous block was an index header, skip this fake table entirely!
-             if (i > 0) {
-                 const prevUpper = rawBlocks[i-1].toUpperCase();
-                 if (prevUpper.includes("TABLE OF CONTENTS") || prevUpper.includes("LIST OF TABLES") || prevUpper.includes("LIST OF FIGURES") || prevUpper.includes("LIST OF ACRONYMS")) {
-                     continue; 
-                 }
+             // 🚨 SURGICAL PURGE: Delete fake tables that appear inside indexes
+             if (["TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES", "LIST OF ACRONYMS"].includes(currentSection)) {
+                 continue; 
              }
 
              const lines = blockText.split('\n');
@@ -93,11 +99,13 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
         }
 
         if (blockText.startsWith("# ")) {
-             parsedBlocks.push({ type: 'h1', text: blockText.replace(/^#\s*/, '').replace(/\*\*/g, '') });
+             const h1Text = blockText.replace(/^#\s*/, '').trim();
+             currentSection = h1Text.toUpperCase(); // Track exactly what section we are in
+             parsedBlocks.push({ type: 'h1', text: h1Text });
         } else if (blockText.startsWith("## ")) {
-             parsedBlocks.push({ type: 'h2', text: blockText.replace(/^##\s*/, '').replace(/\*\*/g, '') });
+             parsedBlocks.push({ type: 'h2', text: blockText.replace(/^##\s*/, '') });
         } else if (blockText.startsWith("### ")) {
-             parsedBlocks.push({ type: 'h3', text: blockText.replace(/^###\s*/, '').replace(/\*\*/g, '') });
+             parsedBlocks.push({ type: 'h3', text: blockText.replace(/^###\s*/, '') });
         } else {
              if (/(?:\s|^)1\.\s+[A-Z].*?(?:\s)2\.\s+[A-Z]/g.test(blockText)) {
                  const parts = blockText.split(/(?=\s\d\.\s+[A-Z])/);
@@ -108,7 +116,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
         }
     }
 
-    // 2. Paginate Blocks & Track Real Index Data
+    // 4. PAGINATE BLOCKS & TRACK DATA
     const tempPages: any[][] = [];
     let currentPage: any[] = [];
     let currentHeight = 0;
@@ -116,7 +124,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     
     const tempToc: any[] = [];
     const tempLot: any[] = [];
-    const tempLof: any[] = []; // List of Figures
+    const tempLof: any[] = []; 
     let chapOneIdx = -1;
     let tableCounter = 1;
 
@@ -142,12 +150,11 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
              forceNewPage = true; 
              
              const upperTitle = block.text.toUpperCase();
-             // Exclude the indexes themselves from appearing inside the TOC
              if (!["TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES", "LIST OF ACRONYMS"].includes(upperTitle)) {
                  tempToc.push({ title: block.text, level: 1, globalPageIndex: tempPages.length });
              }
              
-             // Pinpoint Chapter One for accurate Roman Numeral shifting
+             // Pinpoint Chapter One to lock the Roman Numeral math
              if (upperTitle.includes("CHAPTER ONE") || upperTitle.includes("CHAPTER 1") || upperTitle.includes("1.0 INTRODUCTION")) {
                  if (chapOneIdx === -1) chapOneIdx = tempPages.length;
              }
@@ -162,8 +169,11 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
         else if (block.type === 'p') {
              blockHeight = Math.ceil(block.text.length / 90) * 24 + 16; 
              
-             // Track List of Figures
-             if (block.text.trim().toUpperCase().startsWith('FIGURE')) {
+             // Track List of Figures specifically from the placeholder
+             const upperText = block.text.toUpperCase();
+             if (upperText.includes('[INSERT') && upperText.includes('CONCEPTUAL FRAMEWORK')) {
+                 tempLof.push({ title: "Conceptual Framework", globalPageIndex: tempPages.length });
+             } else if (upperText.startsWith('FIGURE')) {
                  tempLof.push({ title: block.text.split('\n')[0].substring(0, 80), globalPageIndex: tempPages.length });
              }
         } 
@@ -197,25 +207,12 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     });
     pushPage(); 
 
-    // 3. INLINE REPLACEMENT (Perfectly slots our auto-indexes into the AI's intended locations)
-    const finalPages = tempPages.map(pageBlocks => {
-        const firstBlock = pageBlocks[0];
-        if (firstBlock && firstBlock.type === 'h1') {
-            const upper = firstBlock.text.toUpperCase();
-            if (upper.includes("TABLE OF CONTENTS")) return [{ type: 'auto-toc' }];
-            if (upper.includes("LIST OF TABLES")) return [{ type: 'auto-lot' }];
-            if (upper.includes("LIST OF FIGURES")) return [{ type: 'auto-lof' }];
-            // List of Acronyms stays as is, because it's text-based and we want the AI's output
-        }
-        return pageBlocks;
-    });
-
-    return { finalRenderPages: finalPages, tocData: tempToc, lotData: tempLot, lofData: tempLof, finalChapterOneIdx: chapOneIdx };
+    return { finalRenderPages: tempPages, tocData: tempToc, lotData: tempLot, lofData: tempLof, finalChapterOneIdx: chapOneIdx };
   }, [content]);
 
   // --- PERFECT ROMAN NUMERAL MATH ---
   const getDisplayPageNum = (globalIndex: number) => {
-    if (globalIndex === 0) return ""; 
+    if (globalIndex === 0) return ""; // Cover Page gets no number
     
     // Everything before Chapter 1 gets i, ii, iii...
     if (finalChapterOneIdx !== -1 && globalIndex < finalChapterOneIdx) {
@@ -228,7 +225,6 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
   // --- AUTO COMPONENTS ---
   const renderDynamicToC = () => (
     <div className="w-full font-sans py-8">
-       <h1 className="text-xl md:text-2xl font-black mb-8 uppercase tracking-widest text-center">TABLE OF CONTENTS</h1>
       {tocData.map((item, idx) => {
         if (item.globalPageIndex === 0) return null; 
         return (
@@ -243,10 +239,9 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
   );
 
   const renderDynamicLoT = () => {
-    if (lotData.length === 0) return <div className="w-full text-center py-8"><h1 className="text-xl font-black mb-4 uppercase">LIST OF TABLES</h1><p className="text-sm text-gray-500 italic">No tables found.</p></div>;
+    if (lotData.length === 0) return <div className="w-full text-center py-8"><p className="text-sm text-gray-500 italic">No tables found.</p></div>;
     return (
       <div className="w-full font-sans py-8">
-         <h1 className="text-xl md:text-2xl font-black mb-8 uppercase tracking-widest text-center">LIST OF TABLES</h1>
         {lotData.map((item, idx) => (
           <div key={`lot-${idx}`} className="flex w-full text-xs items-end mb-2 pl-6 text-gray-800">
             <span className="bg-white pr-2 whitespace-nowrap">{item.title}</span>
@@ -259,10 +254,9 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
   };
 
   const renderDynamicLoF = () => {
-    if (lofData.length === 0) return <div className="w-full text-center py-8"><h1 className="text-xl font-black mb-4 uppercase">LIST OF FIGURES</h1><p className="text-sm text-gray-500 italic">No figures found.</p></div>;
+    if (lofData.length === 0) return <div className="w-full text-center py-8"><p className="text-sm text-gray-500 italic">No figures found.</p></div>;
     return (
       <div className="w-full font-sans py-8">
-         <h1 className="text-xl md:text-2xl font-black mb-8 uppercase tracking-widest text-center">LIST OF FIGURES</h1>
         {lofData.map((item, idx) => (
           <div key={`lof-${idx}`} className="flex w-full text-xs items-end mb-2 pl-6 text-gray-800">
             <span className="bg-white pr-2 whitespace-nowrap">{item.title}</span>
@@ -333,13 +327,23 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
             <div className={`relative z-10 font-serif text-gray-900 flex-grow ${isCoverPage ? 'flex flex-col justify-center items-center text-center space-y-12' : 'text-justify'}`}>
               
               {pageBlocks.map((block: any, bIdx: number) => {
-                if (block.type === 'auto-toc') return <div key={bIdx} className="w-full">{renderDynamicToC()}</div>;
-                if (block.type === 'auto-lot') return <div key={bIdx} className="w-full">{renderDynamicLoT()}</div>;
-                if (block.type === 'auto-lof') return <div key={bIdx} className="w-full">{renderDynamicLoF()}</div>;
-
                 if (block.type === 'table') return renderTable(block.text, bIdx);
                 
-                if (block.type === 'h1') return <h1 key={bIdx} className={`text-xl md:text-2xl font-black mt-0 mb-8 uppercase tracking-widest ${isCoverPage ? 'text-center' : 'text-center w-full'}`}>{formatInlineText(block.text)}</h1>;
+                if (block.type === 'h1') {
+                    const upper = block.text.toUpperCase();
+                    return (
+                        <div key={bIdx} className="w-full">
+                            <h1 className={`text-xl md:text-2xl font-black mt-0 mb-8 uppercase tracking-widest ${isCoverPage ? 'text-center' : 'text-center w-full'}`}>
+                                {formatInlineText(block.text)}
+                            </h1>
+                            {/* PERFECT INJECTION: Drops our auto-lists inside the AI's header layout */}
+                            {upper === "TABLE OF CONTENTS" && renderDynamicToC()}
+                            {upper === "LIST OF TABLES" && renderDynamicLoT()}
+                            {upper === "LIST OF FIGURES" && renderDynamicLoF()}
+                        </div>
+                    );
+                }
+                
                 if (block.type === 'h2') return <h2 key={bIdx} className={`text-lg md:text-xl font-bold mt-8 mb-4 ${isCoverPage ? 'text-center' : 'text-left'}`}>{formatInlineText(block.text)}</h2>;
                 if (block.type === 'h3') return <h3 key={bIdx} className={`text-base md:text-lg font-bold mt-6 mb-2 ${isCoverPage ? 'text-center' : 'text-left'}`}>{formatInlineText(block.text)}</h3>;
 
@@ -356,6 +360,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
 
             </div>
 
+            {/* PERFECT FOOTER NUMBERING */}
             {!isCoverPage && (
               <div className="absolute bottom-[10mm] left-0 w-full text-center text-xs md:text-sm text-gray-500 font-serif">
                 {getDisplayPageNum(index)} 
