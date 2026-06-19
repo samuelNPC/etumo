@@ -32,14 +32,11 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
       const trimmedLine = line.trim();
       if (!trimmedLine) return <br key={idx} />;
 
-      // Safety catch: completely hide any stray markdown dividers that sneak through
-      if (trimmedLine === "---" || trimmedLine === "***") return null;
-
       // Handle H1 / Chapter Titles (Auto-centered)
       if (trimmedLine.startsWith("# ")) {
         return <h1 key={idx} className="text-xl md:text-2xl font-black mt-0 mb-6 md:mb-8 text-center uppercase tracking-widest">{trimmedLine.replace(/^#\s*/, "")}</h1>;
       }
-      // Handle H2 (Auto-centered for cover pages)
+      // Handle H2
       if (trimmedLine.startsWith("## ")) {
         return <h2 key={idx} className="text-lg md:text-xl font-bold mt-6 md:mt-8 mb-3 md:mb-4 text-center">{trimmedLine.replace(/^##\s*/, "")}</h2>;
       }
@@ -62,7 +59,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
         );
       }
 
-      // Center align placeholder brackets (e.g., [INSERT LOGO HERE]) for cover page aesthetics
+      // Center align placeholder brackets (e.g., [INSERT LOGO HERE])
       if (trimmedLine.startsWith("[") && trimmedLine.endsWith("]")) {
         return <p key={idx} className="mb-4 text-sm md:text-[16px] leading-[2] text-center font-bold text-gray-500">{line}</p>;
       }
@@ -76,70 +73,79 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     return <div className="p-10 text-center text-gray-500 font-mono">Select a chapter to load the preview...</div>;
   }
 
-  let cleanContent = content;
-
-  // 🚨 1. HTML SANITIZER: Strip & Convert rogue HTML injected by AI
-  cleanContent = cleanContent
-    .replace(/<h1[^>]*>/gi, '\n# ')
-    .replace(/<\/h1>/gi, '\n')
-    .replace(/<h2[^>]*>/gi, '\n## ')
-    .replace(/<\/h2>/gi, '\n')
-    .replace(/<h3[^>]*>/gi, '\n### ')
-    .replace(/<\/h3>/gi, '\n')
-    .replace(/<(b|strong)[^>]*>/gi, '**')
-    .replace(/<\/(b|strong)>/gi, '**')
+  // 🚨 1. HTML SANITIZER: Smartly convert tags to text formatting so lines don't merge
+  let cleanContent = content
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<p[^>]*>/gi, '\n\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<div[^>]*>/gi, '\n')
-    .replace(/<\/div>/gi, '\n');
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<h[1-6][^>]*>/gi, '\n# ')
+    .replace(/<\/h[1-6]>/gi, '\n')
+    .replace(/<(b|strong)[^>]*>/gi, '**')
+    .replace(/<\/(b|strong)>/gi, '**');
 
-  // Catch-all: Strip any remaining HTML tags (like <span align="center">)
+  // Nuke any remaining rogue HTML attributes (like <div align="center">)
   cleanContent = cleanContent.replace(/<[^>]+>/g, '');
 
-  // 🚨 2. CLEANUP FILTER: Strip out meta-headings
-  cleanContent = cleanContent
-    .replace(/^(#\s*)?PRELIMINARY PAGES$/gim, '')
-    .replace(/^(#\s*)?APPENDICES$/gim, '');
+  // 🚨 2. BULLETPROOF LINE-BY-LINE PAGINATION ENGINE
+  const lines = cleanContent.split('\n');
+  const pages: string[] = [];
+  let currentPage: string[] = [];
 
-  // 🚨 3. ENHANCED AUTO-PAGINATION ENGINE
-  // First, handle explicit generic page break markers
-  cleanContent = cleanContent
-    .replace(/\[PAGE BREAK\]/gi, '___PAGE_BREAK___') 
-    .replace(/\n\s*---\s*\n/g, '\n___PAGE_BREAK___\n');
-
-  // Force page breaks explicitly before standard CHAPTER headings
-  cleanContent = cleanContent.replace(/^(#{1,3}\s*)(CHAPTER\s+[A-Z0-9]+.*)$/gim, '___PAGE_BREAK___\n# $2');
-
-  // Force page breaks specifically before Preliminary Page sections
-  const prelimSections = [
+  const pageBreakTriggers = [
     "DECLARATION", "APPROVAL", "DEDICATION", "ACKNOWLEDGEMENT", "ACKNOWLEDGEMENTS",
     "ABSTRACT", "TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES", 
     "LIST OF ACRONYMS", "LIST OF ABBREVIATIONS"
   ];
-  // Regex looks for these exact words at the start of a line (with or without # tags)
-  const prelimRegex = new RegExp(`^\\s*(#{1,3}\\s*)?(${prelimSections.join('|')})\\s*$`, 'gim');
-  cleanContent = cleanContent.replace(prelimRegex, '___PAGE_BREAK___\n# $2');
 
-  // Clean up any double page breaks and excessive newlines
-  cleanContent = cleanContent.replace(/(___PAGE_BREAK___\s*)+/g, '___PAGE_BREAK___\n');
-  cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n');
+  for (let i = 0; i < lines.length; i++) {
+    const originalLine = lines[i];
+    const trimmedLine = originalLine.trim();
+    // Strip markdown formatting for pure keyword matching
+    const upperLine = trimmedLine.toUpperCase().replace(/^#+\s*/, ''); 
 
-  // Remove page break if it accidentally landed at the very beginning of the document
-  cleanContent = cleanContent.replace(/^___PAGE_BREAK___\s*/, '');
+    // Is this a chapter heading? (Must be short so we don't accidentally split on a paragraph starting with "Chapter")
+    const isChapterHeading = upperLine.startsWith("CHAPTER ") && upperLine.length < 60;
 
-  // Split into final array
-  const pages = cleanContent
-    .split('___PAGE_BREAK___')
-    .map(page => page.trim())
-    .filter(page => page.length > 0); 
+    if (
+      trimmedLine === "---" || 
+      trimmedLine === "***" || 
+      trimmedLine === "[PAGE BREAK]" || 
+      upperLine === "PRELIMINARY PAGES" || 
+      upperLine === "APPENDICES" ||
+      pageBreakTriggers.includes(upperLine) ||
+      isChapterHeading
+    ) {
+      
+      // 1. Save the current page to the stack (if it has text)
+      if (currentPage.join('').trim().length > 0) {
+        pages.push(currentPage.join('\n'));
+      }
+      
+      // 2. Start a fresh page
+      currentPage = [];
+
+      // 3. If it's a valid heading, stamp it at the top of the new page as an H1
+      if (pageBreakTriggers.includes(upperLine) || isChapterHeading) {
+        currentPage.push(`# ${upperLine}`);
+      }
+
+    } else {
+      // Normal line of text, keep writing on the current page
+      currentPage.push(originalLine);
+    }
+  }
+
+  // Push the very last page to the stack
+  if (currentPage.join('').trim().length > 0) {
+    pages.push(currentPage.join('\n'));
+  }
 
   return (
     <div className="bg-gray-200 py-6 md:py-10 px-2 md:px-10 overflow-y-auto locked-document-viewer select-none flex flex-col gap-6 md:gap-8 items-center min-h-[80vh]">
 
       {pages.map((pageContent, index) => {
         return (
-          // 🚨 RESPONSIVE A4 PAGE CONTAINER
+          // RESPONSIVE A4 PAGE CONTAINER
           <div 
             key={index} 
             className="relative bg-white shadow-xl w-full max-w-[210mm] min-h-[297mm] px-6 py-10 md:px-[25.4mm] md:py-[25.4mm] pointer-events-none"
