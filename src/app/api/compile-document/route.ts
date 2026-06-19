@@ -191,7 +191,7 @@ export async function POST(req: Request) {
           })
         );
       }
-      
+
       const elements = processTextToElements(rawText);
       docChildren.push(...elements);
 
@@ -227,15 +227,8 @@ export async function POST(req: Request) {
     const contentData = data.content || {};
 
     if (isFullDocument) {
-      // Add the overarching Master Title for the entire document
-      docChildren.push(
-        new docx.Paragraph({
-          children: [new docx.TextRun({ text: data.topic?.toUpperCase() || "RESEARCH PROJECT", bold: true, size: 32, font: "Times New Roman" })],
-          alignment: docx.AlignmentType.CENTER,
-          spacing: { after: 800 },
-        })
-      );
-
+      // 🚨 REMOVED: The overarching topic header injection is gone.
+      
       structure.forEach((chapter: any, index: number) => {
         if (chapter.key === "guidelines") return;
 
