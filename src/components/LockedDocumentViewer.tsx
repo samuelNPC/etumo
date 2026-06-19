@@ -26,16 +26,57 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     };
   }, []);
 
-  // Format internal text (headings, bolding, paragraphs)
+  // Format internal text (headings, bolding, paragraphs, and tables)
   const formatText = (text: string) => {
-    // Aggressively collapse 3+ empty lines down to just 2 to fix the massive spacing issue
+    // Aggressively collapse 3+ empty lines down to just 2 to fix massive spacing
     const normalizedText = text.replace(/\n{3,}/g, '\n\n');
 
     return normalizedText.split('\n').map((line, idx) => {
       const trimmedLine = line.trim();
       
-      // Instead of an invisible <br> that stacks up, use a controlled height spacer
       if (!trimmedLine) return <div key={idx} className="h-4"></div>;
+
+      // 🚨 SMART TABLE & TOC RENDERER
+      if (trimmedLine.includes("|") && trimmedLine.length > 3) {
+        // Clean the markdown table syntax
+        const cleanRow = trimmedLine.replace(/^\|/, '').replace(/\|$/, '');
+        const cols = cleanRow.split('|').map(c => c.trim());
+
+        // Ignore structural markdown divider lines (e.g., |---|---| or | :--- |)
+        if (cols.every(c => /^[:\- ]+$/.test(c) || c === '')) return null;
+
+        // Is this a Table of Contents / List of Tables row? 
+        // Heuristic: Last column is a short number or roman numeral
+        if (cols.length >= 2) {
+          const lastCol = cols[cols.length - 1];
+          const isPageNumber = /^[0-9ivxlc]+$/i.test(lastCol.replace(/[^0-9a-zA-Z]/g, ''));
+          
+          if (isPageNumber && lastCol.length <= 6) {
+            const leftText = cols.slice(0, -1).join(' ').replace(/\*\*/g, '');
+            const isMainChapter = leftText.toUpperCase().includes("CHAPTER");
+            
+            // Render with the perfect dotted leader lines!
+            return (
+              <div key={idx} className={`flex items-end mb-2 text-sm md:text-[16px] leading-[2] ${isMainChapter ? 'mt-4 font-bold' : ''}`}>
+                <span>{leftText}</span>
+                <div className="flex-1 border-b-2 border-dotted border-gray-400 mx-2 mb-1.5 opacity-60"></div>
+                <span>{lastCol}</span>
+              </div>
+            );
+          }
+        }
+
+        // If it's a real data table (e.g., in Chapter 4 Data Presentation)
+        return (
+          <div key={idx} className="flex w-full border-b border-gray-300 bg-white first:border-t first:bg-gray-100 first:font-bold">
+            {cols.map((col, i) => (
+              <div key={i} className="flex-1 p-2 text-sm border-r border-gray-300 last:border-r-0 flex items-center text-gray-800">
+                {col.replace(/\*\*/g, '')}
+              </div>
+            ))}
+          </div>
+        );
+      }
 
       // Handle H1 / Chapter Titles (Auto-centered)
       if (trimmedLine.startsWith("# ")) {
@@ -78,9 +119,9 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     return <div className="p-10 text-center text-gray-500 font-mono">Select a chapter to load the preview...</div>;
   }
 
-  // 🚨 1. AGGRESSIVE SANITIZER: Nuke all HTML and HTML spaces
+  // 🚨 1. AGGRESSIVE SANITIZER: Nuke all HTML
   let cleanContent = content
-    .replace(/&nbsp;/gi, ' ') // Strip non-breaking spaces that cause weird gaps
+    .replace(/&nbsp;/gi, ' ') 
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n\n')
     .replace(/<\/div>/gi, '\n')
@@ -88,7 +129,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     .replace(/<\/h[1-6]>/gi, '\n')
     .replace(/<(b|strong)[^>]*>/gi, '**')
     .replace(/<\/(b|strong)>/gi, '**')
-    .replace(/<[^>]+>/g, ''); // Nuke any remaining rogue HTML attributes
+    .replace(/<[^>]+>/g, ''); 
 
   // 🚨 2. BULLETPROOF PAGE PARSER
   const lines = cleanContent.split('\n');
@@ -103,8 +144,9 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
 
   for (let i = 0; i < lines.length; i++) {
     const originalLine = lines[i];
+    const trimmedLine = originalLine.trim();
     
-    // Create a perfectly clean string for matching: uppercase, no asterisks, no punctuation, no spaces on ends
+    // Create a perfectly clean string for matching
     const cleanLineToMatch = originalLine.toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
 
     // Kill duplicate title injections entirely
@@ -112,33 +154,32 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
       continue;
     }
 
-    const isChapterHeading = cleanLineToMatch.startsWith("CHAPTER ") && cleanLineToMatch.length < 60;
-    const isTrigger = pageBreakTriggers.includes(cleanLineToMatch);
+    // 🚨 FIX: Ensure the trigger is NOT inside a markdown table row (checks for | )
+    const isInsideTable = trimmedLine.includes("|");
+    const isChapterHeading = cleanLineToMatch.startsWith("CHAPTER ") && cleanLineToMatch.length < 60 && !isInsideTable;
+    const isTrigger = pageBreakTriggers.includes(cleanLineToMatch) && !isInsideTable;
 
     if (isTrigger || isChapterHeading) {
-      // 1. Save the current page (if it actually has content)
       if (currentPage.join('').trim().length > 0) {
         pages.push(currentPage.join('\n'));
       }
       
-      // 2. Start a fresh page
       currentPage = [];
 
-      // 3. Stamp the trigger word perfectly formatted as an H1 at the top of the new page
       if (cleanLineToMatch !== "PAGE BREAK") {
-        currentPage.push(`# ${originalLine.replace(/[*#]/g, '').trim()}`);
+        currentPage.push(`# ${originalLine.replace(/[*#|]/g, '').trim()}`);
       }
     } else {
-      // Prevent the page from starting with massive empty space
+      // Ignore Markdown table structure lines during parsing to prevent empty gaps
+      if (trimmedLine.match(/^\|?[:\-\s]+\|[:\-\s|]*$/)) continue;
+
       if (currentPage.length === 0 && originalLine.trim() === '') {
         continue;
       }
-      // Add standard text line to current page
       currentPage.push(originalLine);
     }
   }
 
-  // Push the final page
   if (currentPage.join('').trim().length > 0) {
     pages.push(currentPage.join('\n'));
   }
@@ -163,7 +204,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
             ></div>
 
             {/* The Actual Page Content */}
-            <div className="relative z-10 font-serif text-gray-900">
+            <div className="relative z-10 font-serif text-gray-900 w-full">
               {formatText(pageContent)}
             </div>
 
