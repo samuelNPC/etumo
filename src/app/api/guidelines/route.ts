@@ -58,9 +58,8 @@ export async function POST(req: Request) {
 
     let jsonText = result.response.text().trim();
     
-    // 4. Safety Cleanup: Strip out markdown JSON blocks if the AI includes them
-    jsonText = jsonText.replace(/```json/gi, "").replace(/
-```/g, "").trim();
+    // 4. Safety Cleanup: Stripping markdown blocks (written safely to avoid copy-paste line breaks)
+    jsonText = jsonText.split("```json").join("").split("```").join("").trim();
 
     // Parse the extracted JSON
     const parsedGuidelines = JSON.parse(jsonText);
