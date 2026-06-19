@@ -62,7 +62,6 @@ function WorkspaceContent() {
   const [generatingKey, setGeneratingKey] = useState<string | null>(null);
   const [previewChapter, setPreviewChapter] = useState<string | null>(null);
 
-  // 🚨 High Traffic Retry States
   const [trafficErrorLevel, setTrafficErrorLevel] = useState<0 | 1 | 2>(0);
   const [failedChapterKey, setFailedChapterKey] = useState<string | null>(null);
 
@@ -78,7 +77,6 @@ function WorkspaceContent() {
   const [feedbackText, setFeedbackText] = useState<string>("");
   const [applyingCorrection, setApplyingCorrection] = useState<boolean>(false);
 
-  // Universal Payment State
   const [paymentState, setPaymentState] = useState<{
     isActive: boolean;
     amount: number;
@@ -161,16 +159,15 @@ function WorkspaceContent() {
     (c) => c.key !== "guidelines" && !generatedChapters.includes(c.key)
   );
 
-    const fullDocumentContent = currentStructure
+  const fullDocumentContent = currentStructure
     .filter(c => c.key !== "guidelines" && project?.content[c.key])
     .map(c => project?.content[c.key])
     .join("\n\n\n[PAGE BREAK]\n\n\n");
 
-
   const handleGenerateChapter = async (chapterKey: string) => {
     if (!projectId) return;
     setGeneratingKey(chapterKey);
-    setFailedChapterKey(null); // Reset previous failures on new attempt
+    setFailedChapterKey(null); 
     setQuoteIndex(0); 
 
     try {
@@ -183,7 +180,6 @@ function WorkspaceContent() {
       const data = await res.json();
 
       if (!res.ok) {
-        // 🚨 HIGH TRAFFIC RETRY LOGIC
         if (res.status === 503 || data.code === "HIGH_TRAFFIC") {
           setFailedChapterKey(chapterKey);
           if (trafficErrorLevel === 0) {
@@ -209,7 +205,6 @@ function WorkspaceContent() {
           };
         });
         
-        // Reset errors on success
         setTrafficErrorLevel(0);
         setFailedChapterKey(null);
         setPreviewChapter(chapterKey);
@@ -227,26 +222,34 @@ function WorkspaceContent() {
     if (!projectId) return;
 
     const isPrelim = chapterKey.toLowerCase().includes("preliminary");
-    const price = isPrelim ? 5000 : 10000;
-    const documentType = isPrelim ? "Preliminary Pages" : "Chapter";
+    const isChapter1 = chapterKey.toLowerCase().includes("chapter1");
 
+    // Bypass payment for Free Tier (Chapter 1 will get watermarked via the API)
+    if (isPrelim || isChapter1) {
+      executeSingleDownload(chapterKey, isChapter1); 
+      return;
+    }
+
+    // Trigger Payment Popup for locked chapters
+    const currentLabel = currentStructure.find(c => c.key === chapterKey)?.label || "Chapter";
+    
     setPaymentState({
       isActive: true,
-      amount: price,
-      description: `Unlock ${documentType} Download`,
+      amount: 10000,
+      description: `Unlock ${currentLabel} Download`,
       onSuccess: () => {
         setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
-        executeSingleDownload(chapterKey);
+        executeSingleDownload(chapterKey, false); // Not watermarked since they paid
       }
     });
   };
 
-  const executeSingleDownload = async (chapterKey: string) => {
+  const executeSingleDownload = async (chapterKey: string, isWatermarked: boolean = false) => {
     try {
       const res = await fetch("/api/compile-document", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, chapterKey, structure: currentStructure }),
+        body: JSON.stringify({ projectId, chapterKey, structure: currentStructure, isWatermarked }),
       });
 
       if (!res.ok) throw new Error("Export failed");
@@ -256,7 +259,7 @@ function WorkspaceContent() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${currentLabel.replace(/\s+/g, "_")}.docx`;
+      a.download = `${currentLabel.replace(/\s+/g, "_")}${isWatermarked ? "_WATERMARKED" : ""}.docx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -508,6 +511,8 @@ function WorkspaceContent() {
 
           const isCurrentlyGenerating = generatingKey === chapter.key;
           const hasTrafficError = failedChapterKey === chapter.key && trafficErrorLevel > 0;
+          
+          const isFreeDownload = chapter.key.toLowerCase().includes("preliminary") || chapter.key.toLowerCase().includes("chapter1");
 
           return (
             <div key={chapter.key} className={`border rounded-2xl overflow-hidden transition-all duration-300 flex flex-col ${bgClass}`}>
@@ -522,6 +527,9 @@ function WorkspaceContent() {
                     </h3>
                     {((isGuidelinesStep && isGuidelinesUploaded) || (isGenerated && !isGuidelinesStep)) && (
                       <span className="bg-green-200 text-green-800 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest">DONE</span>
+                    )}
+                    {isFreeDownload && !isGuidelinesStep && (
+                      <span className="bg-blue-100 text-blue-700 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest">FREE TIER</span>
                     )}
                     {isLocked && (
                       <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -542,12 +550,21 @@ function WorkspaceContent() {
                       <GuidelineUploader projectId={projectId as string} onComplete={handleGuidelinesComplete} />
                     )
                   ) : isGenerated ? (
-                    <button 
-                      onClick={() => setPreviewChapter(chapter.key)}
-                      className="bg-white text-gray-800 hover:bg-gray-100 px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors border border-gray-300 shadow-sm"
-                    >
-                      Preview
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setPreviewChapter(chapter.key); }}
+                        className="bg-white text-gray-800 hover:bg-gray-100 px-4 py-2.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors border border-gray-300 shadow-sm"
+                      >
+                        Preview
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDownloadSingle(chapter.key); }}
+                        className={`${isFreeDownload ? 'bg-[#d97706] hover:bg-[#b45309]' : 'bg-black hover:bg-gray-800'} text-white px-4 py-2.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors shadow-sm flex items-center gap-1`}
+                      >
+                        {!isFreeDownload && <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>}
+                        {isFreeDownload ? "Download Free" : "Unlock (10k)"}
+                      </button>
+                    </div>
                   ) : (
                     <button 
                       onClick={() => handleGenerateChapter(chapter.key)}
@@ -564,7 +581,6 @@ function WorkspaceContent() {
                 </div>
               </div>
 
-              {/* GENERATION LOADING STATE */}
               {isCurrentlyGenerating && (
                 <div className="bg-orange-100/50 border-t border-orange-200 px-6 py-3 flex items-center gap-3 animate-in fade-in duration-300">
                   <div className="w-4 h-4 border-2 border-[#d97706] border-t-transparent rounded-full animate-spin shrink-0" />
@@ -574,7 +590,6 @@ function WorkspaceContent() {
                 </div>
               )}
 
-              {/* 🚨 HIGH TRAFFIC RETRY UI */}
               {hasTrafficError && (
                 <div className="bg-orange-50 border-t border-orange-200 px-6 py-4 flex flex-col items-center justify-center text-center animate-in slide-in-from-top-2 duration-300">
                   {trafficErrorLevel === 1 && (
