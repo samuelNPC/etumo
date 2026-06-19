@@ -52,7 +52,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     let cleanText = content;
 
     // 1. STRIP AI META-GARBAGE
-    cleanText = cleanText.replace(/^(#\s*)?(\*\*)?PRELIMINARY PAGES(\*\*)?\s*$/gim, '');
+    cleanText = cleanText.replace(/PRELIMINARY PAGES/gi, ''); // Deletes any word Preliminary Pages
     cleanText = cleanText.replace(/^(#\s*)?(\*\*)?APPENDICES(\*\*)?\s*$/gim, '');
     cleanText = cleanText.replace(/\[SYSTEM_AUTO_INDEX\]/g, '');
 
@@ -60,12 +60,17 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     // Strip bolding from major headers first so the anchors work perfectly
     cleanText = cleanText.replace(/\*\*(TABLE OF CONTENTS|LIST OF TABLES|LIST OF FIGURES|LIST OF ACRONYMS|DECLARATION|APPROVAL|DEDICATION|ACKNOWLEDGEMENT|ABSTRACT|CHAPTER.*?)\*\*/gim, '$1');
     
-    // Force all known major headers to have the # markdown tag
-    cleanText = cleanText.replace(/^(TABLE OF CONTENTS|LIST OF TABLES|LIST OF FIGURES|LIST OF ACRONYMS|DECLARATION|APPROVAL|DEDICATION|ACKNOWLEDGEMENT|ABSTRACT)\s*$/gim, '# $1');
-    cleanText = cleanText.replace(/^(CHAPTER\s+(ONE|TWO|THREE|FOUR|FIVE|SIX|\d+).*?)\s*$/gim, '# $1');
+    // Only break the preliminary Pages basing on --- and use # to bold
+    cleanText = cleanText.replace(/^---\s*(.*)$/gim, '# $1');
 
-    // Remove duplicate adjacent Chapter headings (e.g. # CHAPTER ONE\n# CHAPTER ONE)
-    cleanText = cleanText.replace(/^(#\s*CHAPTER[^\n]+)\n+(?:#\s*CHAPTER[^\n]+|CHAPTER[^\n]+)\n+/gim, '$1\n\n');
+    // Split merged headings like "CHAPTER TWO: LITERATURE REVIEW 2.0 INTRODUCTION"
+    cleanText = cleanText.replace(/(CHAPTER\s+[A-Z]+[^\d\n]*)\s+(\d\.0\s+INTRODUCTION)/gi, '$1\n\n## $2');
+
+    // Remove duplicate adjacent Chapter headings, keeping the second one
+    cleanText = cleanText.replace(/^(?:#\s*)?(CHAPTER\s+[A-Z]+[^\n]*)\s*\n+(?:\[PAGE BREAK\]\s*\n+)?(?=(?:#\s*)?CHAPTER\s+[A-Z]+)/gim, '');
+
+    // Force Chapter headings to have the # markdown tag
+    cleanText = cleanText.replace(/^(CHAPTER\s+(ONE|TWO|THREE|FOUR|FIVE|SIX|\d+).*?)\s*$/gim, '# $1');
 
     const rawBlocks = cleanText.split(/\n\n+/);
     const parsedBlocks: any[] = [];
