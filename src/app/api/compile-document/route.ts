@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     ];
 
     const processTextToElements = (rawString: string) => {
-      // 🚨 AGGRESSIVE SANITIZER: Nuke HTML and normalize gaps
+      // 🚨 AGGRESSIVE SANITIZER: Clean HTML but DO NOT mangle valid text
       let cleanContent = rawString
         .replace(/&nbsp;/gi, ' ') 
         .replace(/<br\s*\/?>/gi, '\n')
@@ -53,10 +53,6 @@ export async function POST(req: Request) {
         .replace(/<\/(b|strong)>/gi, '**')
         .replace(/<[^>]+>/g, ''); 
 
-      // 🚨 MULTI-LINE TOC COLLAPSER: Fixes AI putting dots and numbers on new lines
-      cleanContent = cleanContent.replace(/(.+)\n[\.\s]{3,}\n([0-9ivxlc]+)/gim, '$1 ..... $2');
-
-      // 🚨 GAP LIMITER: Crush 3+ empty lines down to a maximum of 2
       const normalizedText = cleanContent.replace(/\n{3,}/g, '\n\n');
       const lines = normalizedText.split("\n");
       const elements: (docx.Paragraph | docx.Table)[] = [];
@@ -64,59 +60,48 @@ export async function POST(req: Request) {
       let inTable = false;
       let tableRowsData: string[][] = [];
       let consecutiveEmptyLines = 0;
+      
+      // 🚨 NEW TOC STATE MACHINE
+      let inTOC = false;
+      let pendingTocText = "";
+
+      const createTocRow = (leftText: string, pageNumber: string) => {
+        // Automatically bold Chapter titles in the TOC
+        const isChapter = leftText.toUpperCase().includes("CHAPTER");
+        return new docx.Paragraph({
+          children: [
+            ...parseInlineText(leftText, isChapter),
+            new docx.TextRun({ text: "\t" + pageNumber, size: 24, font: "Times New Roman", bold: isChapter })
+          ],
+          tabStops: [{ type: docx.TabStopPosition.RIGHT, position: 9000, leader: docx.LeaderType.DOT }],
+          spacing: { before: isChapter ? 120 : 0, after: 60 } 
+        });
+      };
 
       const flushTable = () => {
         if (tableRowsData.length > 0) {
-          // 🚨 BULLETPROOF TOC DETECTOR: If 40% of the second column are numbers, it's a TOC
-          let numberCount = 0;
-          tableRowsData.forEach(row => {
-            if (row.length === 2 && /^[0-9ivxlc]+$/i.test(row[1].replace(/[^0-9a-zA-Z]/g, ''))) {
-              numberCount++;
-            }
+          const table = new docx.Table({
+            width: { size: 100, type: docx.WidthType.PERCENTAGE }, 
+            rows: tableRowsData.map((row, rowIndex) => {
+              const isHeader = rowIndex === 0;
+              return new docx.TableRow({
+                children: row.map(cellText => {
+                  return new docx.TableCell({
+                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                    shading: isHeader ? { fill: "F3F4F6", type: docx.ShadingType.CLEAR, color: "auto" } : undefined,
+                    children: [
+                      new docx.Paragraph({
+                        children: parseInlineText(cellText, isHeader),
+                        alignment: isHeader ? docx.AlignmentType.CENTER : docx.AlignmentType.LEFT,
+                        spacing: { after: 0, line: 240 },
+                      })
+                    ]
+                  });
+                })
+              });
+            })
           });
-          const isTOC = tableRowsData[0].length === 2 && numberCount >= (tableRowsData.length * 0.4);
-
-          if (isTOC) {
-            tableRowsData.forEach(row => {
-              const leftText = row[0].replace(/[*#]/g, '').trim();
-              const rightText = row[1].replace(/[*#]/g, '').trim();
-              
-              if (!/^[0-9ivxlc]+$/i.test(rightText) && row === tableRowsData[0]) return; // Skip headers like "Title | Page"
-
-              elements.push(new docx.Paragraph({
-                children: [
-                  ...parseInlineText(leftText),
-                  new docx.TextRun({ text: "\t" + rightText, size: 24, font: "Times New Roman" })
-                ],
-                tabStops: [{ type: docx.TabStopPosition.RIGHT, position: 9000, leader: docx.LeaderType.DOT }],
-                spacing: { after: 120 }
-              }));
-            });
-          } else {
-            // Standard Academic Grid Table
-            const table = new docx.Table({
-              width: { size: 100, type: docx.WidthType.PERCENTAGE }, 
-              rows: tableRowsData.map((row, rowIndex) => {
-                const isHeader = rowIndex === 0;
-                return new docx.TableRow({
-                  children: row.map(cellText => {
-                    return new docx.TableCell({
-                      margins: { top: 100, bottom: 100, left: 100, right: 100 },
-                      shading: isHeader ? { fill: "F3F4F6", type: docx.ShadingType.CLEAR, color: "auto" } : undefined,
-                      children: [
-                        new docx.Paragraph({
-                          children: parseInlineText(cellText, isHeader),
-                          alignment: isHeader ? docx.AlignmentType.CENTER : docx.AlignmentType.LEFT,
-                          spacing: { after: 0, line: 240 },
-                        })
-                      ]
-                    });
-                  })
-                });
-              })
-            });
-            elements.push(table);
-          }
+          elements.push(table);
           elements.push(new docx.Paragraph({ text: "", spacing: { after: 200 } }));
         }
         inTable = false;
@@ -129,16 +114,29 @@ export async function POST(req: Request) {
 
         if (cleanLineToMatch === "PRELIMINARY PAGES" || cleanLineToMatch === "APPENDICES") continue;
 
-        // 1. Trigger Headers (Forces Page Breaks)
-        const isChapterHeading = cleanLineToMatch.startsWith("CHAPTER ") && cleanLineToMatch.length < 60;
+        // Ensure TOC chapter references (which end in numbers) don't trigger massive page breaks
+        const isChapterHeading = cleanLineToMatch.startsWith("CHAPTER ") && cleanLineToMatch.length < 60 && !/ [0-9IVXLC]+$/.test(cleanLineToMatch);
         const isTrigger = pageBreakTriggers.includes(cleanLineToMatch);
 
+        // Turn OFF TOC Mode if we hit a new section
+        if (inTOC && (isTrigger || isChapterHeading) && !["TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES"].includes(cleanLineToMatch)) {
+            inTOC = false;
+            pendingTocText = ""; 
+        }
+
+        // 1. PAGE BREAK TRIGGERS
         if (isTrigger || isChapterHeading) {
           if (inTable) flushTable();
           consecutiveEmptyLines = 0;
           if (elements.length > 0) {
             elements.push(new docx.Paragraph({ text: "", pageBreakBefore: true }));
           }
+          
+          // Turn ON TOC Mode
+          if (["TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES"].includes(cleanLineToMatch)) {
+              inTOC = true;
+          }
+
           elements.push(
             new docx.Paragraph({
               text: trimmed.replace(/[*#|]/g, '').trim().toUpperCase(),
@@ -150,11 +148,49 @@ export async function POST(req: Request) {
           continue;
         }
 
-        // 2. Table Row Detector
+        // 2. TOC PROCESSING (State Machine)
+        if (inTOC) {
+          // Remove rogue markdown pipes the AI might insert
+          let tocTrimmed = trimmed.replace(/\|/g, '').trim(); 
+          if (tocTrimmed === "") continue;
+          if (/^[\.\-\_]+$/.test(tocTrimmed)) continue; // ignore rows of just dots
+          if (tocTrimmed.match(/^[:\-\s]+$/)) continue; // ignore markdown table separators like ---|---
+
+          // If the line is ONLY a number, glue it to the pending text
+          if (/^[0-9ivxlc]+$/i.test(tocTrimmed)) {
+              if (pendingTocText) {
+                  elements.push(createTocRow(pendingTocText, tocTrimmed));
+                  pendingTocText = "";
+              }
+              continue;
+          }
+
+          // If the line has text on the left and a number on the right (e.g. "2.0 Intro ... 9")
+          const tocInlineMatch = tocTrimmed.match(/^(.*?)(?:\.{2,}|\s+)([0-9ivxlc]+)$/i);
+          if (tocInlineMatch) {
+             let left = tocInlineMatch[1].trim();
+             let right = tocInlineMatch[2].trim();
+             if (left) {
+                elements.push(createTocRow(left, right));
+                pendingTocText = "";
+                continue;
+             }
+          }
+
+          // Otherwise, hold the text and wait for the number on the next line
+          if (pendingTocText) {
+              pendingTocText += " " + tocTrimmed;
+          } else {
+              pendingTocText = tocTrimmed;
+          }
+          continue;
+        }
+
+        // 3. NORMAL TABLES
         if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
           inTable = true;
           consecutiveEmptyLines = 0;
-          if (trimmed.match(/^\|[\s\-\|:]+\|$/)) continue; // ignore markdown separators
+          if (trimmed.match(/^\|[\s\-\|:]+\|$/)) continue;
           const cells = trimmed.split("|").slice(1, -1).map(c => c.trim());
           tableRowsData.push(cells);
           continue;
@@ -162,7 +198,7 @@ export async function POST(req: Request) {
           flushTable();
         }
 
-        // 3. Empty Line Gap Limiter
+        // 4. EMPTY LINES
         if (trimmed === "") {
           consecutiveEmptyLines++;
           if (consecutiveEmptyLines <= 2) {
@@ -172,34 +208,21 @@ export async function POST(req: Request) {
         }
         consecutiveEmptyLines = 0;
 
-        // 4. Stray TOC Line Interceptor (Catches literal dots or rogue pipes)
-        const tocPlainMatch = trimmed.match(/^(.*?)(?:\.{3,}|\s\.\s\.\s\.)\s*([0-9ivxlc]+)$/i);
-        const tocStrayMatch = trimmed.match(/^\|?\s*(.*?)\s*\|\s*([0-9ivxlc]+)\s*\|?$/i);
-        
-        let tocLeft = null;
-        let tocRight = null;
-
-        if (tocPlainMatch) {
-            tocLeft = tocPlainMatch[1];
-            tocRight = tocPlainMatch[2];
-        } else if (tocStrayMatch && !trimmed.includes("---")) { 
-            tocLeft = tocStrayMatch[1];
-            tocRight = tocStrayMatch[2];
+        // 5. DIAGRAM PLACEHOLDERS
+        if (trimmed.includes("[INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE]")) {
+           elements.push(
+            new docx.Paragraph({
+              children: [
+                new docx.TextRun({ text: "[INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE]", bold: true, color: "D97706", size: 24, font: "Times New Roman" })
+              ],
+              alignment: docx.AlignmentType.CENTER,
+              spacing: { before: 400, after: 400 },
+            })
+          );
+          continue;
         }
 
-        if (tocLeft && tocRight) {
-             elements.push(new docx.Paragraph({
-                children: [
-                  ...parseInlineText(tocLeft.replace(/[*#|]/g, '').trim()),
-                  new docx.TextRun({ text: "\t" + tocRight.trim(), size: 24, font: "Times New Roman" })
-                ],
-                tabStops: [{ type: docx.TabStopPosition.RIGHT, position: 9000, leader: docx.LeaderType.DOT }],
-                spacing: { after: 120 }
-            }));
-            continue;
-        }
-
-        // 5. Generic Heading Parser (Fixes # tags showing as text)
+        // 6. GENERIC MARKDOWN HEADINGS
         const headerMatch = trimmed.match(/^(#{1,6})\s+(.*)/);
         if (headerMatch) {
           const level = headerMatch[1].length;
@@ -224,31 +247,17 @@ export async function POST(req: Request) {
           continue;
         }
 
-        // 6. Centered Brackets (e.g. [UNIVERSITY NAME])
+        // 7. CENTERED BRACKETS (e.g. [UNIVERSITY NAME])
         if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
           elements.push(new docx.Paragraph({
-            children: parseInlineText(trimmed, true), // force bold
+            children: parseInlineText(trimmed, true), // Force bold
             alignment: docx.AlignmentType.CENTER,
             spacing: { after: 200 }
           }));
           continue;
         }
 
-        // 7. Conceptual Framework Placeholder
-        if (trimmed.includes("[INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE]")) {
-           elements.push(
-            new docx.Paragraph({
-              children: [
-                new docx.TextRun({ text: "[INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE]", bold: true, color: "D97706", size: 24, font: "Times New Roman" })
-              ],
-              alignment: docx.AlignmentType.CENTER,
-              spacing: { before: 400, after: 400 },
-            })
-          );
-          continue;
-        }
-
-        // 8. Normal Paragraphs & Bullets
+        // 8. PARAGRAPHS & BULLETS
         const isBullet = /^[\*\-]\s+(.*)/.exec(trimmed);
         let contentText = trimmed;
         let bulletInfo = undefined;
