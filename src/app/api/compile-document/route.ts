@@ -6,7 +6,8 @@ import { doc, getDoc } from "firebase/firestore";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { projectId, chapterKey, isFullDocument, structure, rawText, rawTitle } = body;
+    // 🚨 ADDED: isWatermarked flag extracted from the request
+    const { projectId, chapterKey, isFullDocument, structure, rawText, rawTitle, isWatermarked } = body;
 
     const parseInlineText = (text: string, forceBold: boolean = false): docx.TextRun[] => {
       const runs: docx.TextRun[] = [];
@@ -204,12 +205,42 @@ export async function POST(req: Request) {
       return elements;
     };
 
-    // 🚨 ACADEMIC FOOTER TEMPLATE
+    // 🚨 YELLOW ETUMO WATERMARK HEADER FOR FREE TIER
+    const createHeader = () => {
+      if (!isWatermarked) return undefined;
+      return new docx.Header({
+        children: [
+          new docx.Paragraph({
+            alignment: docx.AlignmentType.CENTER,
+            children: [
+              new docx.TextRun({ 
+                text: "⚠️ ETUMO.COM FREE EVALUATION COPY ⚠️", 
+                color: "D97706", // Etumo Yellow/Orange
+                bold: true, 
+                size: 22, 
+                font: "Arial" 
+              })
+            ]
+          })
+        ]
+      });
+    };
+
+    // 🚨 YELLOW ETUMO DISCLAIMER FOOTER
     const createFooter = () => new docx.Footer({
       children: [
         new docx.Paragraph({
           alignment: docx.AlignmentType.CENTER,
           children: [
+            ...(isWatermarked ? [
+              new docx.TextRun({ 
+                text: "ETUMO.COM FREE EVALUATION COPY - ", 
+                color: "D97706", // Etumo Yellow/Orange
+                bold: true, 
+                size: 20, 
+                font: "Arial" 
+              })
+            ] : []),
             new docx.TextRun({
               children: [docx.PageNumber.CURRENT],
               font: "Times New Roman",
@@ -220,12 +251,10 @@ export async function POST(req: Request) {
       ]
     });
 
-    // 🚨 DOCUMENT SECTIONS ARRAYS
     const prelimChildren: (docx.Paragraph | docx.Table)[] = [];
     const chapterChildren: (docx.Paragraph | docx.Table)[] = [];
     const docSections: docx.ISectionOptions[] = [];
 
-    // --- ORIGINALITY CENTER BYPASS ROUTING ---
     if (rawText) {
       if (rawTitle) {
         prelimChildren.push(
@@ -237,7 +266,6 @@ export async function POST(req: Request) {
         );
       }
       
-      // Auto-detect if rawText has chapters to split the sections
       const chapMatch = rawText.match(/^(#{1,3}\s*)?CHAPTER\s+/mi);
       if (chapMatch && chapMatch.index !== undefined && chapMatch.index > 0) {
         const pText = rawText.substring(0, chapMatch.index);
@@ -248,7 +276,6 @@ export async function POST(req: Request) {
         chapterChildren.push(...processTextToElements(rawText));
       }
     } 
-    // --- WORKSPACE COMPILER ROUTING ---
     else {
       if (!projectId || !chapterKey || !structure) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -290,21 +317,22 @@ export async function POST(req: Request) {
       }
     }
 
-    // 🚨 SECTION 1: PRELIMINARY PAGES (Roman Numerals & Hidden Cover Page Number)
+    // 🚨 SECTION 1: PRELIMINARY PAGES
     if (prelimChildren.length > 0) {
       docSections.push({
         properties: {
           page: {
             pageNumbers: { start: 1, formatType: docx.PageNumberFormat.LOWER_ROMAN },
           },
-          titlePage: true, // This explicitly hides the footer on the very first page
+          titlePage: true, 
         },
-        footers: { default: createFooter() },
+        headers: { default: createHeader() }, // Attaches the top watermark
+        footers: { default: createFooter() }, // Attaches the bottom disclaimer
         children: prelimChildren,
       });
     }
 
-    // 🚨 SECTION 2: MAIN CHAPTERS (Arabic Numerals starting at 1)
+    // 🚨 SECTION 2: MAIN CHAPTERS
     if (chapterChildren.length > 0) {
       docSections.push({
         properties: {
@@ -312,7 +340,8 @@ export async function POST(req: Request) {
             pageNumbers: { start: 1, formatType: docx.PageNumberFormat.DECIMAL },
           },
         },
-        footers: { default: createFooter() },
+        headers: { default: createHeader() }, // Attaches the top watermark
+        footers: { default: createFooter() }, // Attaches the bottom disclaimer
         children: chapterChildren,
       });
     }
