@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, collection, query, where, getDocs } from "firebase/firestore"; // 🚨 Added query imports
 import LockedDocumentViewer from "@/components/LockedDocumentViewer";
 import PaymentModal from "@/components/PaymentModal";
 
@@ -80,7 +80,23 @@ export default function DataCollectorPage() {
     }
   };
 
-  const handlePayment = () => {
+  // 🚨 Extracted binding logic to reuse for both Free and Paid tiers
+  const bindInstrumentToUser = async () => {
+    if (analysisData?.instrumentId && user) {
+      try {
+        await updateDoc(doc(db, "instruments", analysisData.instrumentId), {
+          userId: user.uid,
+          status: "active"
+        });
+      } catch (error) {
+        console.error("Failed to link instrument to user:", error);
+      }
+    }
+    setShowPreview(false); 
+    setStep("success"); 
+  };
+
+  const handlePayment = async () => {
     // 🚨 LOGIN WALL: Stop them before payment if they aren't logged in
     if (!user) {
       alert("Please log in or create an account to deploy and track your instrument.");
@@ -89,27 +105,28 @@ export default function DataCollectorPage() {
       return;
     }
 
+    // 🚨 FREE TIER LINK CHECKER
+    try {
+      const q = query(collection(db, "instruments"), where("userId", "==", user.uid));
+      const querySnapshot = await getDocs(q);
+      
+      // If the user has 0 instruments attached to their ID, grant them their 1 free link!
+      if (querySnapshot.empty) {
+        bindInstrumentToUser();
+        return;
+      }
+    } catch (err) {
+      console.error("Error checking user free tier status", err);
+    }
+
+    // Otherwise, trigger the paywall
     setPaymentState({
       isActive: true,
       amount: 10000,
       description: "Deploy Digital Instrument Link & Analytics",
-      onSuccess: async () => {
+      onSuccess: () => {
         setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
-        
-        // 🚨 OWNERSHIP LOCK: Tie the instrument to this user in Firebase
-        if (analysisData?.instrumentId && user) {
-          try {
-            await updateDoc(doc(db, "instruments", analysisData.instrumentId), {
-              userId: user.uid,
-              status: "active"
-            });
-          } catch (error) {
-            console.error("Failed to link instrument to user:", error);
-          }
-        }
-
-        setShowPreview(false); 
-        setStep("success"); 
+        bindInstrumentToUser();
       }
     });
   };
@@ -240,7 +257,7 @@ export default function DataCollectorPage() {
                 className="flex-1 bg-[#d97706] text-white font-extrabold py-4 rounded-xl uppercase text-xs tracking-widest hover:bg-[#b45309] transition-all shadow-lg hover:-translate-y-1 flex items-center justify-center gap-2"
               >
                 {!user && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>}
-                {user ? "Deploy Link (10,000 UGX)" : "Log In to Deploy"}
+                {user ? "Deploy Link" : "Log In to Deploy"}
               </button>
             </div>
           </div>
@@ -285,7 +302,7 @@ export default function DataCollectorPage() {
               className="bg-[#d97706] text-white px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-[#b45309] transition-colors shadow-sm flex items-center gap-2"
             >
               {!user && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>}
-              {user ? "Deploy Link (10,000 UGX)" : "Log In to Deploy"}
+              {user ? "Deploy Link" : "Log In to Deploy"}
             </button>
             <button 
               onClick={() => setShowPreview(false)}
