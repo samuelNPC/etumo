@@ -11,9 +11,14 @@ import PaymentModal from "@/components/PaymentModal";
 
 interface ChapterStructure { key: string; label: string; }
 interface ProjectData {
-  topic: string; course: string; faculty: string; progress: number; freeEditsUsed?: number;
+  topic: string; 
+  course: string; 
+  faculty: string; 
+  progress: number; 
+  freeEditsUsed?: number;
   guidelines?: { isCustomized: boolean; formattingRules: string; structure: ChapterStructure[]; };
-  content: { [key: string]: any[] }; // 🚨 STRICT AST ARRAY STRUCTURE
+  // 🚨 AST ARCHITECTURE: Content is now an object containing arrays of blocks
+  content: { [key: string]: any[] }; 
 }
 
 const defaultStructure: ChapterStructure[] = [
@@ -27,7 +32,15 @@ const defaultStructure: ChapterStructure[] = [
   { key: "appendices", label: "8. Appendices (Instruments & Budget)" }, 
 ];
 
-const generationQuotes = ["Synthesizing academic literature...", "Structuring conceptual frameworks...", "Aligning with faculty guidelines...", "Chaining memory from previous chapters..."];
+const generationQuotes = [
+  "Synthesizing academic literature...",
+  "Structuring conceptual frameworks...",
+  "Aligning with faculty guidelines...",
+  "Formulating research objectives...",
+  "Chaining memory from previous chapters...",
+  "Applying critical analysis...",
+  "Drafting final paragraphs..."
+];
 
 function WorkspaceContent() {
   const searchParams = useSearchParams();
@@ -36,12 +49,17 @@ function WorkspaceContent() {
 
   const [project, setProject] = useState<ProjectData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+
   const [generatingKey, setGeneratingKey] = useState<string | null>(null);
   const [previewChapter, setPreviewChapter] = useState<string | null>(null);
+
+  // 🚨 High Traffic Retry States
   const [trafficErrorLevel, setTrafficErrorLevel] = useState<0 | 1 | 2>(0);
   const [failedChapterKey, setFailedChapterKey] = useState<string | null>(null);
+
   const [lockedPopup, setLockedPopup] = useState<boolean>(false);
   const [quoteIndex, setQuoteIndex] = useState(0);
+
   const [course, setCourse] = useState("");
   const [customTopic, setCustomTopic] = useState("");
   const [setupLoading, setSetupLoading] = useState(false);
@@ -52,44 +70,83 @@ function WorkspaceContent() {
   const [feedbackText, setFeedbackText] = useState<string>("");
   const [applyingCorrection, setApplyingCorrection] = useState<boolean>(false);
 
-  const [paymentState, setPaymentState] = useState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
+  // Universal Payment State
+  const [paymentState, setPaymentState] = useState<{
+    isActive: boolean;
+    amount: number;
+    description: string;
+    onSuccess: () => void;
+  }>({
+    isActive: false,
+    amount: 0,
+    description: "",
+    onSuccess: () => {},
+  });
 
   useEffect(() => {
-    if (!projectId) return setLoading(false);
+    if (!projectId) {
+      setLoading(false);
+      return;
+    }
     const fetchProject = async () => {
       try {
-        const docSnap = await getDoc(doc(db, "projects", projectId));
-        if (docSnap.exists()) setProject(docSnap.data() as ProjectData);
-      } catch (err) { console.error(err); } finally { setLoading(false); }
+        const docRef = doc(db, "projects", projectId);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setProject(docSnap.data() as ProjectData);
+        }
+      } catch (err) {
+        console.error("Failed to load project:", err);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchProject();
   }, [projectId]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (generatingKey) interval = setInterval(() => setQuoteIndex(p => (p + 1) % generationQuotes.length), 3000);
+    if (generatingKey) {
+      interval = setInterval(() => {
+        setQuoteIndex((prev) => (prev + 1) % generationQuotes.length);
+      }, 3000);
+    }
     return () => clearInterval(interval);
   }, [generatingKey]);
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customTopic.trim()) return;
-    setSetupLoading(true); setSetupError(null);
+    setSetupLoading(true);
+    setSetupError(null);
+
     try {
       const docRef = await addDoc(collection(db, "projects"), {
-        topic: customTopic.trim(), course: course || "General", faculty: "General", progress: 10, freeEditsUsed: 0, content: {}, userId: auth.currentUser?.uid || "anonymous", createdAt: new Date().toISOString(),
+        topic: customTopic.trim(),
+        course: course || "General",
+        faculty: "General",
+        progress: 10,
+        freeEditsUsed: 0, 
+        content: {},
+        userId: auth.currentUser?.uid || "anonymous", 
+        createdAt: new Date().toISOString(),
       });
       router.push(`/workspace?id=${docRef.id}`);
-    } catch (err) { setSetupError("Failed to initialize database."); setSetupLoading(false); }
+    } catch (err) {
+      setSetupError("Failed to initialize your workspace database.");
+      setSetupLoading(false);
+    }
   };
 
   const currentStructure = project?.guidelines?.isCustomized ? project.guidelines.structure : defaultStructure;
   const isGuidelinesUploaded = project?.guidelines?.isCustomized === true;
   const generatedChapters = Object.keys(project?.content || {});
 
-  const firstUngeneratedIndex = currentStructure.findIndex(c => c.key !== "guidelines" && !generatedChapters.includes(c.key));
+  const firstUngeneratedIndex = currentStructure.findIndex(
+    (c) => c.key !== "guidelines" && !generatedChapters.includes(c.key)
+  );
 
-  // 🚨 STITCH AST ARRAYS TOGETHER FOR FULL DOCUMENT
+  // 🚨 AST ARCHITECTURE: Stitching JSON Arrays instead of Markdown strings
   let fullDocumentBlocks: any[] = [];
   currentStructure.filter(c => c.key !== "guidelines" && project?.content[c.key]).forEach((c, index) => {
       if (index > 0) fullDocumentBlocks.push({ type: 'page-break', text: '' });
@@ -98,30 +155,54 @@ function WorkspaceContent() {
 
   const handleGenerateChapter = async (chapterKey: string) => {
     if (!projectId) return;
-    setGeneratingKey(chapterKey); setFailedChapterKey(null); setQuoteIndex(0); 
+    setGeneratingKey(chapterKey);
+    setFailedChapterKey(null);
+    setQuoteIndex(0); 
 
     try {
       const res = await fetch("/api/chapters", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, chapterKey }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, chapterKey }),
       });
+
       const data = await res.json();
 
       if (!res.ok) {
         if (res.status === 503 || data.code === "HIGH_TRAFFIC") {
           setFailedChapterKey(chapterKey);
-          if (trafficErrorLevel === 0) { setTrafficErrorLevel(1); throw new Error("TRAFFIC_STRIKE_1"); } 
-          else { setTrafficErrorLevel(2); throw new Error("TRAFFIC_STRIKE_2"); }
+          if (trafficErrorLevel === 0) {
+            setTrafficErrorLevel(1);
+            throw new Error("TRAFFIC_STRIKE_1");
+          } else {
+            setTrafficErrorLevel(2);
+            throw new Error("TRAFFIC_STRIKE_2");
+          }
         }
         throw new Error(data.error || "Failed to generate chapter.");
       }
 
       if (data.chapterContent) {
-        setProject(prev => prev ? { ...prev, progress: Math.min(prev.progress + 15, 100), content: { ...prev.content, [chapterKey]: data.chapterContent } } : null);
-        setTrafficErrorLevel(0); setFailedChapterKey(null); setPreviewChapter(chapterKey);
+        setProject((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            progress: Math.min(prev.progress + 15, 100),
+            content: { ...prev.content, [chapterKey]: data.chapterContent },
+          };
+        });
+
+        setTrafficErrorLevel(0);
+        setFailedChapterKey(null);
+        setPreviewChapter(chapterKey);
       }
     } catch (err: any) {
-      if (!err.message.includes("TRAFFIC_STRIKE")) alert("Error: " + err.message);
-    } finally { setGeneratingKey(null); }
+      if (err.message !== "TRAFFIC_STRIKE_1" && err.message !== "TRAFFIC_STRIKE_2") {
+        alert("Error processing generation pipeline: " + err.message);
+      }
+    } finally {
+      setGeneratingKey(null);
+    }
   };
 
   const handleDownloadSingle = (chapterKey: string) => {
@@ -157,16 +238,26 @@ function WorkspaceContent() {
   const executeDownload = async (isFull: boolean, chapterKey: string) => {
     try {
       const res = await fetch("/api/compile-document", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, chapterKey, isFullDocument: isFull, structure: currentStructure }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, chapterKey, isFullDocument: isFull, structure: currentStructure }),
       });
+
       if (!res.ok) throw new Error("Export failed");
+      const currentLabel = currentStructure.find(c => c.key === chapterKey)?.label || chapterKey;
+
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = isFull ? `${project?.topic.substring(0, 30).replace(/\s+/g, "_")}_Complete.docx` : `${chapterKey}.docx`;
-      document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); a.remove();
-    } catch (error) { alert("Error downloading document."); }
+      a.download = isFull ? `${project?.topic.substring(0, 30).replace(/\s+/g, "_")}_Complete.docx` : `${currentLabel.replace(/\s+/g, "_")}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (error) {
+      alert("Error downloading document.");
+    }
   };
 
   // Supervisor Feedback Logic
@@ -202,7 +293,6 @@ function WorkspaceContent() {
 
       const data = await res.json();
       if (data.chapterContent) {
-        // AST handles strings on the backend, we just accept the array
         const newEditsUsed = editsUsed + 1;
 
         setProject(prev => prev ? { 
@@ -234,77 +324,253 @@ function WorkspaceContent() {
     setFeedbackText("");
   };
 
-  if (loading) return <div className="h-[80vh] flex flex-col items-center justify-center"><div className="w-20 h-20 border-4 border-[#d97706] border-t-transparent rounded-full animate-spin"></div><p className="mt-4 font-mono text-xs uppercase tracking-widest text-gray-500">Initializing Workspace</p></div>;
-  
-  if (!projectId) return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8 mt-8">
-      <Link href="/" className="text-sm font-bold text-gray-500 hover:text-black mb-4 inline-block transition-colors">&larr; Back to Home</Link>
-      <h1 className="text-3xl font-bold tracking-tight text-gray-900 mb-2">Get Started</h1>
-      <p className="text-gray-500 mb-8">Enter your approved research topic below to initialize your workspace.</p>
-      {setupError && <div className="mb-6 bg-red-50 p-4 text-red-700 text-sm font-bold shadow-sm">{setupError}</div>}
-      <form onSubmit={handleCreateProject} className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-gray-100 flex flex-col gap-6">
-        <div><label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Approved Topic</label><textarea className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl outline-none font-medium" value={customTopic} onChange={(e) => setCustomTopic(e.target.value)} required /></div>
-        <div><label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Course (Optional)</label><input type="text" className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl outline-none font-medium" value={course} onChange={(e) => setCourse(e.target.value)} /></div>
-        <button type="submit" disabled={setupLoading || !customTopic.trim()} className="mt-2 bg-black text-white font-bold py-4 rounded-xl hover:bg-gray-800 disabled:bg-gray-300 text-sm uppercase tracking-widest shadow-md">{setupLoading ? "Provisioning Database..." : "Initialize Workspace \u2192"}</button>
-      </form>
-    </div>
-  );
+  // UI RENDERING
+  if (loading) {
+    return (
+      <div className="h-[80vh] flex flex-col items-center justify-center">
+        <div className="relative flex items-center justify-center w-20 h-20">
+          <div className="absolute w-full h-full border-4 border-gray-200 rounded-full"></div>
+          <div className="absolute w-full h-full border-4 border-[#d97706] border-t-transparent rounded-full animate-spin"></div>
+          <span className="font-extrabold text-[#d97706] text-2xl absolute">E</span>
+        </div>
+        <p className="mt-4 font-mono text-xs uppercase tracking-widest text-gray-500 animate-pulse">Initializing Workspace</p>
+      </div>
+    );
+  }
+
+  if (!projectId) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="mb-8">
+          <Link href="/" className="text-sm font-bold text-gray-500 hover:text-black mb-4 inline-block transition-colors">&larr; Back to Home</Link>
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Get Started</h1>
+          <p className="text-gray-500 mt-2">Enter your approved research topic below to initialize your workspace.</p>
+        </div>
+
+        {setupError && <div className="mb-6 border-l-4 border-red-500 bg-red-50 p-4 text-red-700 text-sm font-bold shadow-sm rounded-r-lg">⚠️ {setupError}</div>}
+
+        <form onSubmit={handleCreateProject} className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-gray-100 flex flex-col gap-6">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Approved Topic</label>
+            <textarea
+              placeholder="e.g., The Impact of Digital Procurement Systems on Local Government Performance..."
+              rows={3}
+              className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl outline-none focus:border-black focus:ring-1 focus:ring-black transition-all resize-none font-medium"
+              value={customTopic}
+              onChange={(e) => setCustomTopic(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Course (Optional)</label>
+            <input
+              type="text"
+              placeholder="e.g., Bachelor of Business Administration"
+              className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl outline-none focus:border-black transition-all font-medium"
+              value={course}
+              onChange={(e) => setCourse(e.target.value)}
+            />
+          </div>
+          <button type="submit" disabled={setupLoading || !customTopic.trim()} className="mt-2 bg-black text-white font-bold py-4 rounded-xl hover:bg-gray-800 disabled:bg-gray-300 text-sm uppercase tracking-widest shadow-md">
+            {setupLoading ? "Provisioning Database..." : "Initialize Workspace \u2192"}
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   if (!project) return <div className="p-8 font-mono text-sm text-center mt-10">Project data corrupted. Please create a new project.</div>;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 pb-24 relative">
-      {paymentState.isActive && <PaymentModal amount={paymentState.amount} description={paymentState.description} onSuccess={paymentState.onSuccess} onCancel={() => setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} })} />}
-      
+
+      {paymentState.isActive && (
+        <PaymentModal amount={paymentState.amount} description={paymentState.description} onSuccess={paymentState.onSuccess} onCancel={() => setPaymentState({ ...paymentState, isActive: false })} />
+      )}
+
       {lockedPopup && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center animate-in zoom-in-95 duration-300 border border-gray-100">
             <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
             </div>
             <h3 className="text-xl font-black text-gray-900 mb-2">Section Locked</h3>
-            <p className="text-sm text-gray-600 mb-8 leading-relaxed">You must generate the previous sections sequentially to unlock this chapter.</p>
-            <button onClick={() => setLockedPopup(false)} className="w-full bg-black text-white font-bold py-3.5 rounded-xl uppercase tracking-widest text-xs hover:bg-gray-800 transition-colors shadow-md">I Understand</button>
+            <p className="text-sm text-gray-600 mb-8 leading-relaxed">
+              You must generate the previous sections sequentially to unlock this chapter. The Etumo Engine requires earlier context to maintain academic flow.
+            </p>
+            <button onClick={() => setLockedPopup(false)} className="w-full bg-black text-white font-bold py-3.5 rounded-xl uppercase tracking-widest text-xs hover:bg-gray-800 transition-colors shadow-md">
+              I Understand
+            </button>
           </div>
         </div>
       )}
 
-      <div className="mb-10 text-center sm:text-left"><span className="text-xs font-mono uppercase text-[#d97706] tracking-widest font-bold">{project.course || "Research"} Workspace</span><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900 leading-snug">{project.topic}</h1></div>
-      
+      <div className="mb-10">
+        <div className="text-center mb-4">
+          <span className="text-xs font-mono uppercase text-[#d97706] tracking-widest font-bold">
+            {project.course || "Research"} Workspace
+          </span>
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900 leading-snug text-left">
+          {project.topic}
+        </h1>
+      </div>
+
+      <div className="bg-blue-50 border border-blue-100 p-5 rounded-2xl mb-8 flex items-start gap-4">
+        <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center shrink-0 font-bold">i</div>
+        <div>
+          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest mb-1">How this works</h3>
+          <p className="text-sm text-gray-600 leading-relaxed">
+            Follow the steps below sequentially. You must complete a section before the next one unlocks. The AI will learn your university's format and chain the context of previous chapters to ensure perfect academic flow.
+          </p>
+        </div>
+      </div>
+
+      <div className="mb-8">
+        <div className="flex justify-between items-end mb-2">
+          <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Project Completion</span>
+          <span className="text-xl font-black text-gray-900">{project.progress}%</span>
+        </div>
+        <div className="w-full bg-gray-200 h-3 rounded-full overflow-hidden">
+          <div className="bg-[#d97706] h-full transition-all duration-1000 ease-out" style={{ width: `${project.progress}%` }}></div>
+        </div>
+      </div>
+
       <div className="space-y-4">
         {currentStructure.map((chapter, index) => {
           const isGenerated = generatedChapters.includes(chapter.key);
           const isGuidelinesStep = chapter.key === "guidelines";
+
           let isLocked = false;
-          if (!isGuidelinesUploaded && !isGuidelinesStep) isLocked = true;
-          else if (!isGenerated && firstUngeneratedIndex !== -1 && index > firstUngeneratedIndex) isLocked = true;
+          if (!isGuidelinesUploaded && !isGuidelinesStep) {
+            isLocked = true;
+          } else if (!isGenerated && firstUngeneratedIndex !== -1 && index > firstUngeneratedIndex) {
+            isLocked = true;
+          }
+
+          const isNextUp = !isGenerated && !isLocked && !isGuidelinesStep;
+
+          let bgClass = 'bg-gray-50 border-gray-200 opacity-80';
+          if ((isGuidelinesStep && isGuidelinesUploaded) || (isGenerated && !isGuidelinesStep)) {
+            bgClass = 'bg-green-50 border-green-200';
+          } else if (isNextUp || (isGuidelinesStep && !isGuidelinesUploaded)) {
+            bgClass = 'bg-orange-50 border-orange-300 shadow-md ring-1 ring-orange-500/20';
+          }
+
+          const isCurrentlyGenerating = generatingKey === chapter.key;
+          const hasTrafficError = failedChapterKey === chapter.key && trafficErrorLevel > 0;
 
           return (
-            <div key={chapter.key} className={`border rounded-2xl bg-white flex flex-col sm:flex-row justify-between gap-4 ${isLocked ? 'p-5 sm:p-6 bg-gray-50 opacity-80 cursor-not-allowed' : 'p-5 sm:p-6'}`} onClick={() => { if (isLocked) setLockedPopup(true); }}>
-              <div><h3 className={`font-bold sm:text-lg tracking-tight ${isLocked ? 'text-gray-500' : 'text-gray-900'}`}>{chapter.label}</h3></div>
-              <div className="shrink-0 flex items-center justify-start sm:justify-end mt-2 sm:mt-0">
-                {isGuidelinesStep ? (
-                  isGuidelinesUploaded ? <span className="text-xs font-bold text-green-600">Learned ✓</span> : <GuidelineUploader projectId={projectId as string} onComplete={() => window.location.reload()} />
-                ) : isGenerated ? (
-                  <button onClick={() => setPreviewChapter(chapter.key)} className="bg-white text-gray-800 border border-gray-300 px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-widest shadow-sm hover:bg-gray-50">Preview</button>
-                ) : (
-                  <button onClick={() => handleGenerateChapter(chapter.key)} disabled={isLocked || generatingKey !== null} className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-widest border ${isLocked ? 'text-gray-400 border-gray-300 bg-transparent' : 'bg-[#d97706] text-white hover:bg-[#b45309]'}`}>{generatingKey === chapter.key ? "Drafting..." : "Generate"}</button>
-                )}
+            <div key={chapter.key} className={`border rounded-2xl overflow-hidden transition-all duration-300 flex flex-col ${bgClass}`}>
+              <div 
+                className={`p-5 sm:p-6 flex flex-col sm:flex-row justify-between gap-4 ${isLocked ? 'cursor-not-allowed' : ''}`}
+                onClick={() => { if (isLocked) setLockedPopup(true); }}
+              >
+                <div className="flex flex-col justify-center">
+                  <div className="flex items-center gap-3 mb-1">
+                    <h3 className={`font-bold sm:text-lg tracking-tight ${isLocked ? 'text-gray-500' : 'text-gray-900'}`}>
+                      {chapter.label}
+                    </h3>
+                    {((isGuidelinesStep && isGuidelinesUploaded) || (isGenerated && !isGuidelinesStep)) && (
+                      <span className="bg-green-200 text-green-800 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest">DONE</span>
+                    )}
+                    {isLocked && (
+                      <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {isGuidelinesStep ? "Configures AI formatting" : "Academic drafting phase"}
+                  </p>
+                </div>
+
+                <div className="shrink-0 flex items-center justify-start sm:justify-end mt-2 sm:mt-0">
+                  {isGuidelinesStep ? (
+                    isGuidelinesUploaded ? (
+                      <span className="text-xs font-bold text-green-600 border border-green-200 bg-white px-3 py-2 rounded-lg">Learned ✓</span>
+                    ) : (
+                      <GuidelineUploader projectId={projectId as string} onComplete={() => window.location.reload()} />
+                    )
+                  ) : isGenerated ? (
+                    <button 
+                      onClick={() => setPreviewChapter(chapter.key)}
+                      className="bg-white text-gray-800 hover:bg-gray-100 px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors border border-gray-300 shadow-sm"
+                    >
+                      Preview
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => handleGenerateChapter(chapter.key)}
+                      disabled={isLocked || generatingKey !== null}
+                      className={`px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors border ${
+                        isLocked 
+                          ? 'bg-transparent text-gray-400 border-gray-300' 
+                          : 'bg-[#d97706] text-white hover:bg-[#b45309] border-[#d97706] shadow-sm'
+                      }`}
+                    >
+                      {isCurrentlyGenerating ? "Drafting..." : "Generate"}
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {isCurrentlyGenerating && (
+                <div className="bg-orange-100/50 border-t border-orange-200 px-6 py-3 flex items-center gap-3 animate-in fade-in duration-300">
+                  <div className="w-4 h-4 border-2 border-[#d97706] border-t-transparent rounded-full animate-spin shrink-0" />
+                  <span className="text-xs font-mono text-[#d97706] uppercase tracking-widest animate-pulse font-bold">
+                    {generationQuotes[quoteIndex]}
+                  </span>
+                </div>
+              )}
+
+              {hasTrafficError && (
+                <div className="bg-orange-50 border-t border-orange-200 px-6 py-4 flex flex-col items-center justify-center text-center animate-in slide-in-from-top-2 duration-300">
+                  {trafficErrorLevel === 1 && (
+                    <>
+                      <p className="text-orange-800 text-sm font-bold mb-3">Our System is currently facing high traffic.</p>
+                      <button onClick={() => handleGenerateChapter(chapter.key)} className="bg-[#d97706] text-white px-6 py-2 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-[#b45309] transition-colors shadow-sm">Retry Generation</button>
+                    </>
+                  )}
+                  {trafficErrorLevel === 2 && (
+                    <>
+                      <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center mb-2"><span className="text-orange-600 text-lg">⏳</span></div>
+                      <p className="text-orange-800 text-sm font-bold mb-3 max-w-sm">We are still facing high traffic. Please try again after a few seconds.</p>
+                      <button onClick={() => handleGenerateChapter(chapter.key)} className="text-xs font-bold text-[#d97706] uppercase tracking-widest hover:underline">Try Again Now</button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
       <div className="mt-12 bg-white border border-gray-200 p-8 rounded-2xl text-center shadow-sm">
-        <h3 className="text-xl font-black text-gray-900 mb-6">Complete Compilation</h3>
+        <h3 className="text-xl font-black text-gray-900 mb-2">Complete Research Compilation</h3>
+        <p className="text-gray-600 text-sm mb-6 max-w-lg mx-auto">
+          Preview or export all generated chapters into a single, cohesive Microsoft Word document, ready for supervisor review.
+        </p>
         <div className="flex flex-col sm:flex-row justify-center gap-4">
-          <button onClick={() => setPreviewChapter("FULL_DOCUMENT")} disabled={generatedChapters.length === 0} className="border-2 border-black font-extrabold px-8 py-4 rounded-xl uppercase tracking-widest disabled:opacity-50 hover:bg-gray-50 transition-colors">Preview Full Document</button>
-          <button onClick={handleDownloadFullDocument} disabled={generatedChapters.length === 0} className="bg-black text-white font-extrabold px-8 py-4 rounded-xl uppercase tracking-widest shadow-lg disabled:opacity-50 hover:-translate-y-1 transition-transform">Download (50,000 UGX)</button>
+          <button 
+            onClick={() => setPreviewChapter("FULL_DOCUMENT")}
+            disabled={generatedChapters.length === 0}
+            className="bg-white text-gray-900 border-2 border-black font-extrabold px-8 py-4 rounded-xl uppercase tracking-widest hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Preview Full Document
+          </button>
+          <button 
+            onClick={handleDownloadFullDocument}
+            disabled={generatedChapters.length === 0}
+            className="bg-black text-white font-extrabold px-8 py-4 rounded-xl uppercase tracking-widest hover:bg-gray-800 transition-colors shadow-lg hover:-translate-y-1 disabled:opacity-50 disabled:hover:-translate-y-0 disabled:cursor-not-allowed"
+          >
+            Download (50,000 UGX)
+          </button>
         </div>
       </div>
 
-      {/* Restored External Tool Links */}
       <div className="mt-12 pt-8 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Link href="/originality" className="flex flex-col border border-yellow-300 bg-yellow-50 p-5 rounded-2xl hover:bg-yellow-100 transition-colors">
           <span className="text-sm font-bold text-yellow-900 uppercase tracking-widest mb-1">Originality Center</span>
@@ -317,20 +583,32 @@ function WorkspaceContent() {
       </div>
 
       {previewChapter && (
-        <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in duration-300">
-          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 bg-gray-50 shadow-sm z-10">
-            <button onClick={() => previewChapter === "FULL_DOCUMENT" ? handleDownloadFullDocument() : handleDownloadSingle(previewChapter)} className="bg-[#d97706] text-white px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest shadow-sm hover:bg-[#b45309]">Export to DOCX &darr;</button>
-            <button onClick={closePreview} className="text-xs font-bold text-gray-500 hover:text-red-600 uppercase tracking-widest transition-colors flex items-center gap-2 px-2 py-2">Close Preview ✕</button>
+        <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300">
+
+          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 bg-gray-50 shrink-0 shadow-sm z-10">
+            <button 
+              onClick={() => previewChapter === "FULL_DOCUMENT" ? handleDownloadFullDocument() : handleDownloadSingle(previewChapter)}
+              className="bg-[#d97706] text-white px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-[#b45309] transition-colors shadow-sm"
+            >
+              Export to DOCX &darr;
+            </button>
+
+            <button 
+              onClick={closePreview}
+              className="text-xs font-bold text-gray-500 hover:text-red-600 uppercase tracking-widest transition-colors flex items-center gap-2 px-2 py-2"
+            >
+              Close Preview ✕
+            </button>
           </div>
+
           <div className="flex-1 overflow-y-auto bg-gray-100">
             <div className="max-w-4xl mx-auto w-full min-h-full flex flex-col shadow-2xl my-8">
-              
+
               <div className="flex-1 p-0">
-                {/* 🚨 PASSES BLOCKS ARRAY TO RENDERER */}
-                <LockedDocumentViewer blocks={previewChapter === "FULL_DOCUMENT" ? fullDocumentBlocks : project.content[previewChapter]} />
+                {/* 🚨 CRITICAL AST PASS: Ensure LockedDocumentViewer is expecting 'blocks' */}
+                <LockedDocumentViewer blocks={previewChapter === "FULL_DOCUMENT" ? fullDocumentBlocks : project.content[previewChapter] || []} />
               </div>
 
-              {/* Restored Supervisor Feedback Box */}
               {previewChapter !== "FULL_DOCUMENT" && (
                 <div className="border-t border-gray-200 bg-white p-6 sm:p-10">
                   <div className="max-w-3xl mx-auto">
@@ -387,10 +665,15 @@ function WorkspaceContent() {
           </div>
         </div>
       )}
+
     </div>
   );
 }
 
 export default function WorkspacePage() {
-  return <Suspense fallback={<div className="p-8 text-center animate-pulse">Loading Workspace...</div>}><WorkspaceContent /></Suspense>;
+  return (
+    <Suspense fallback={<div className="p-8 font-mono text-sm text-center mt-10 animate-pulse">Loading Workspace...</div>}>
+      <WorkspaceContent />
+    </Suspense>
+  );
 }
