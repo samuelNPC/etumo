@@ -8,8 +8,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { projectId, chapterKey, isFullDocument, structure, rawText, rawTitle } = body;
 
-    const docChildren: (docx.Paragraph | docx.Table)[] = [];
-
     const parseInlineText = (text: string, forceBold: boolean = false): docx.TextRun[] => {
       const runs: docx.TextRun[] = [];
       let currentIdx = 0;
@@ -36,7 +34,6 @@ export async function POST(req: Request) {
       return runs;
     };
 
-    // 🚨 ALIGNED WITH FRONTEND: Same page break triggers
     const pageBreakTriggers = [
       "DECLARATION", "APPROVAL", "DEDICATION", "ACKNOWLEDGEMENT", "ACKNOWLEDGEMENTS",
       "ABSTRACT", "TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES", 
@@ -44,7 +41,6 @@ export async function POST(req: Request) {
     ];
 
     const processTextToElements = (text: string) => {
-      // Aggressively collapse empty lines like we do on the frontend
       const normalizedText = text.replace(/\n{3,}/g, '\n\n');
       const lines = normalizedText.split("\n");
       const elements: (docx.Paragraph | docx.Table)[] = [];
@@ -54,30 +50,25 @@ export async function POST(req: Request) {
 
       const flushTable = () => {
         if (tableRowsData.length > 0) {
-          
-          // 🚨 ALIGNED WITH FRONTEND: Detect if this is a Table of Contents
           const isTOC = tableRowsData.every((row, idx) => {
-            if (idx === 0) return true; // Ignore header row for check
+            if (idx === 0) return true; 
             if (row.length !== 2) return false;
             const lastCol = row[1];
             return /^[0-9ivxlc]+$/i.test(lastCol.replace(/[^0-9a-zA-Z]/g, '')) && lastCol.length <= 6;
           });
 
           if (isTOC) {
-            // Render native Microsoft Word TOC with dotted tab leaders
             tableRowsData.forEach(row => {
               elements.push(new docx.Paragraph({
                 children: [
                   ...parseInlineText(row[0].replace(/\*\*/g, '')),
                   new docx.TextRun({ text: "\t" + row[1], size: 24, font: "Times New Roman" })
                 ],
-                // 9000 twips is roughly the right side of an A4 page
                 tabStops: [{ type: docx.TabStopType.RIGHT, position: 9000, leader: docx.TabStopLeader.DOT }],
                 spacing: { after: 120 }
               }));
             });
           } else {
-            // Render standard academic Data Table
             const table = new docx.Table({
               width: { size: 100, type: docx.WidthType.PERCENTAGE }, 
               rows: tableRowsData.map((row, rowIndex) => {
@@ -111,22 +102,16 @@ export async function POST(req: Request) {
         const trimmed = lines[i].trim();
         const cleanLineToMatch = trimmed.toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
 
-        // Skip frontend meta-tags
-        if (cleanLineToMatch === "PRELIMINARY PAGES" || cleanLineToMatch === "APPENDICES") {
-          continue;
-        }
+        if (cleanLineToMatch === "PRELIMINARY PAGES" || cleanLineToMatch === "APPENDICES") continue;
 
-        // 🚨 ALIGNED WITH FRONTEND: Native Word Page Breaks for sections
         const isChapterHeading = cleanLineToMatch.startsWith("CHAPTER ") && cleanLineToMatch.length < 60;
         const isTrigger = pageBreakTriggers.includes(cleanLineToMatch);
 
         if (isTrigger || isChapterHeading) {
           if (inTable) flushTable();
-          // Force a page break before the heading (unless it's the very first element)
           if (elements.length > 0) {
             elements.push(new docx.Paragraph({ text: "", pageBreakBefore: true }));
           }
-          
           elements.push(
             new docx.Paragraph({
               text: trimmed.replace(/[*#]/g, '').trim().toUpperCase(),
@@ -138,7 +123,6 @@ export async function POST(req: Request) {
           continue;
         }
 
-        // 1. TABLE DETECTOR
         if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
           inTable = true;
           if (trimmed.match(/^\|[\s\-\|:]+\|$/)) continue;
@@ -149,13 +133,11 @@ export async function POST(req: Request) {
           flushTable();
         }
 
-        // 2. EMPTY LINES
         if (trimmed === "") {
           elements.push(new docx.Paragraph({ text: "", spacing: { after: 200 } }));
           continue;
         }
 
-        // 3. CONCEPTUAL FRAMEWORK INTERCEPTOR
         if (trimmed.includes("[INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE]")) {
            elements.push(
             new docx.Paragraph({
@@ -169,7 +151,6 @@ export async function POST(req: Request) {
           continue;
         }
 
-        // 4. MARKDOWN HEADINGS (H2, H3)
         const headerMatch = trimmed.match(/^(#{2,6})\s+(.*)/);
         if (headerMatch) {
           const level = headerMatch[1].length;
@@ -187,7 +168,6 @@ export async function POST(req: Request) {
           continue;
         }
 
-        // 5. CENTERED PLACEHOLDERS
         if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
           elements.push(new docx.Paragraph({
             children: parseInlineText(trimmed),
@@ -197,7 +177,6 @@ export async function POST(req: Request) {
           continue;
         }
 
-        // 6. NORMAL PARAGRAPHS & BULLETS
         const isBullet = /^[\*\-]\s+(.*)/.exec(trimmed);
         let contentText = trimmed;
         let bulletInfo = undefined;
@@ -225,9 +204,31 @@ export async function POST(req: Request) {
       return elements;
     };
 
+    // 🚨 ACADEMIC FOOTER TEMPLATE
+    const createFooter = () => new docx.Footer({
+      children: [
+        new docx.Paragraph({
+          alignment: docx.AlignmentType.CENTER,
+          children: [
+            new docx.TextRun({
+              children: [docx.PageNumber.CURRENT],
+              font: "Times New Roman",
+              size: 24, // 12pt standard academic size
+            })
+          ]
+        })
+      ]
+    });
+
+    // 🚨 DOCUMENT SECTIONS ARRAYS
+    const prelimChildren: (docx.Paragraph | docx.Table)[] = [];
+    const chapterChildren: (docx.Paragraph | docx.Table)[] = [];
+    const docSections: docx.ISectionOptions[] = [];
+
+    // --- ORIGINALITY CENTER BYPASS ROUTING ---
     if (rawText) {
       if (rawTitle) {
-        docChildren.push(
+        prelimChildren.push(
           new docx.Paragraph({
             children: [new docx.TextRun({ text: rawTitle.toUpperCase(), bold: true, size: 32, font: "Times New Roman" })],
             alignment: docx.AlignmentType.CENTER,
@@ -235,9 +236,20 @@ export async function POST(req: Request) {
           })
         );
       }
-      const elements = processTextToElements(rawText);
-      docChildren.push(...elements);
-    } else {
+      
+      // Auto-detect if rawText has chapters to split the sections
+      const chapMatch = rawText.match(/^(#{1,3}\s*)?CHAPTER\s+/mi);
+      if (chapMatch && chapMatch.index !== undefined && chapMatch.index > 0) {
+        const pText = rawText.substring(0, chapMatch.index);
+        const cText = rawText.substring(chapMatch.index);
+        prelimChildren.push(...processTextToElements(pText));
+        chapterChildren.push(...processTextToElements(cText));
+      } else {
+        chapterChildren.push(...processTextToElements(rawText));
+      }
+    } 
+    // --- WORKSPACE COMPILER ROUTING ---
+    else {
       if (!projectId || !chapterKey || !structure) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
       }
@@ -245,41 +257,70 @@ export async function POST(req: Request) {
       const docRef = doc(db, "projects", projectId);
       const docSnap = await getDoc(docRef);
 
-      if (!docSnap.exists()) {
-        return NextResponse.json({ error: "Project not found" }, { status: 404 });
-      }
+      if (!docSnap.exists()) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
-      const data = docSnap.data();
-      const contentData = data.content || {};
+      const contentData = docSnap.data().content || {};
 
       if (isFullDocument) {
-        structure.forEach((chapter: any, index: number) => {
+        structure.forEach((chapter: any) => {
           if (chapter.key === "guidelines") return;
           const chapterText = contentData[chapter.key];
+          
           if (chapterText) {
             const elements = processTextToElements(chapterText);
-            docChildren.push(...elements);
+            if (chapter.key === "preliminaryPages") {
+              prelimChildren.push(...elements);
+            } else {
+              if (chapterChildren.length > 0) {
+                chapterChildren.push(new docx.Paragraph({ text: "", pageBreakBefore: true }));
+              }
+              chapterChildren.push(...elements);
+            }
           }
         });
       } else {
         const singleChapterText = contentData[chapterKey];
-        if (!singleChapterText) {
-          return NextResponse.json({ error: "Chapter content not found" }, { status: 404 });
+        if (!singleChapterText) return NextResponse.json({ error: "Chapter content not found" }, { status: 404 });
+        
+        if (chapterKey === "preliminaryPages") {
+          prelimChildren.push(...processTextToElements(singleChapterText));
+        } else {
+          chapterChildren.push(...processTextToElements(singleChapterText));
         }
-        const elements = processTextToElements(singleChapterText);
-        docChildren.push(...elements);
       }
+    }
+
+    // 🚨 SECTION 1: PRELIMINARY PAGES (Roman Numerals & Hidden Cover Page Number)
+    if (prelimChildren.length > 0) {
+      docSections.push({
+        properties: {
+          page: {
+            pageNumbers: { start: 1, formatType: docx.PageNumberFormat.LOWER_ROMAN },
+          },
+          titlePage: true, // This explicitly hides the footer on the very first page
+        },
+        footers: { default: createFooter() },
+        children: prelimChildren,
+      });
+    }
+
+    // 🚨 SECTION 2: MAIN CHAPTERS (Arabic Numerals starting at 1)
+    if (chapterChildren.length > 0) {
+      docSections.push({
+        properties: {
+          page: {
+            pageNumbers: { start: 1, formatType: docx.PageNumberFormat.DECIMAL },
+          },
+        },
+        footers: { default: createFooter() },
+        children: chapterChildren,
+      });
     }
 
     const document = new docx.Document({
       creator: "Etumo Engine",
       title: rawTitle || "Research Document",
-      sections: [
-        {
-          properties: {},
-          children: docChildren,
-        },
-      ],
+      sections: docSections,
     });
 
     const buffer = await docx.Packer.toBuffer(document);
