@@ -27,33 +27,41 @@ async function generateWithResiliency(prompt: string) {
 
     for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
       try {
+        console.log(`[Attempt ${attempt}] Sending request to ${currentModelName}...`);
         return await model.generateContent(prompt);
       } catch (error: any) {
         const isTrafficError = error.status === 503 || error.message?.includes("503") || error.message?.includes("high demand");
         if (isTrafficError) {
           if (attempt < MAX_RETRIES_PER_MODEL) {
             await sleep(1000 * attempt);
-          } else {
-            break; 
-          }
-        } else {
-          throw error; 
-        }
+          } else break; 
+        } else throw error; 
       }
     }
   }
   throw new Error("ALL_MODELS_EXHAUSTED");
 }
 
-// 🚨 THE SERVER-SIDE AST PARSER
 function parseMarkdownToBlocks(text: string) {
     let cleanText = text;
-    cleanText = cleanText.replace(/PRELIMINARY PAGES/gi, '');
+
+    // 🚨 SURGICAL PURGE OF PRELIMINARY HALLUCINATIONS
+    cleanText = cleanText.replace(/1\.0\s+Introduction[\s\S]*?(?=(?:#\s*)?(?:\*\*)?(?:1\.\d\s+)?DECLARATION)/i, '');
+    cleanText = cleanText.replace(/(?:#\s*)?(?:\*\*)?(?:1\.\d\s+)?Title Page[\s\S]*?(?=(?:#\s*)?(?:\*\*)?(?:1\.\d\s+)?DECLARATION)/i, '');
+
+    // Force exact preliminary headers to become pristine H1s, stripping any rogue numbers
+    cleanText = cleanText.replace(/^(?:#+\s*)?(?:\*\*)?(?:\d+\.\d+\s+)?(DECLARATION|APPROVAL|DEDICATION|ACKNOWLEDGEMENT|ACKNOWLEDGEMENTS|ABSTRACT|LIST OF ABBREVIATIONS|LIST OF ACRONYMS)(?:\*\*)?\s*$/gim, '# $1');
+
+    cleanText = cleanText.replace(/PRELIMINARY PAGES/gi, ''); 
+    cleanText = cleanText.replace(/1\.\s*Preliminary Pages[^\n]*/gi, ''); 
     cleanText = cleanText.replace(/^(#\s*)?(\*\*)?APPENDICES(\*\*)?\s*$/gim, '');
     cleanText = cleanText.replace(/\[SYSTEM_AUTO_INDEX\]/g, '');
     cleanText = cleanText.replace(/\*\*(TABLE OF CONTENTS|LIST OF TABLES|LIST OF FIGURES|LIST OF ACRONYMS|DECLARATION|APPROVAL|DEDICATION|ACKNOWLEDGEMENT|ABSTRACT|CHAPTER.*?)\*\*/gim, '$1');
     cleanText = cleanText.replace(/^---\s*(.*)$/gim, '# $1');
+    cleanText = cleanText.replace(/\s+##\s+/g, '\n\n## ');
+    cleanText = cleanText.replace(/\s+#\s+/g, '\n\n# ');
     cleanText = cleanText.replace(/(CHAPTER\s+[A-Z]+.*?)\s*#*\s*(\d\.0\s+INTRODUCTION)/gi, '$1\n\n## $2');
+    cleanText = cleanText.replace(/^(?:#\s*)?(CHAPTER\s+[A-Z]+[^\n]*)\s*\n+(?:\[PAGE BREAK\]\s*\n+)?(?=(?:#\s*)?CHAPTER\s+[A-Z]+)/gim, '');
     cleanText = cleanText.replace(/^(CHAPTER\s+(ONE|TWO|THREE|FOUR|FIVE|SIX|\d+).*?)\s*$/gim, '# $1');
 
     const rawBlocks = cleanText.split(/\n\n+/);
@@ -72,9 +80,7 @@ function parseMarkdownToBlocks(text: string) {
         const isTable = blockText.includes('|') && blockText.includes('\n') && /^[|\-\s:]+$/m.test(blockText);
         
         if (isTable) {
-             if (["TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES", "LIST OF ACRONYMS"].includes(currentSection)) {
-                 continue; // Destroy fake AI tables
-             }
+             if (["TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES", "LIST OF ACRONYMS"].includes(currentSection)) continue; 
              const lines = blockText.split('\n');
              const tableStart = lines.findIndex(l => l.trim().startsWith('|'));
              if (tableStart > 0) parsedBlocks.push({ type: 'p', text: lines.slice(0, tableStart).join('\n') });
@@ -105,11 +111,16 @@ function parseMarkdownToBlocks(text: string) {
         } else if (blockText.startsWith("### ")) {
              parsedBlocks.push({ type: 'h3', text: blockText.replace(/^#+\s*/, '').replace(/[#*]/g, '').trim() });
         } else {
-             if (/(?:\s|^)1\.\s+[A-Z].*?(?:\s)2\.\s+[A-Z]/g.test(blockText)) {
-                 const parts = blockText.split(/(?=\s\d\.\s+[A-Z])/);
+             const cleanPText = blockText.replace(/#/g, '').trim();
+             if (!cleanPText) continue;
+
+             if (/(?:\s|^)1\.\s+[A-Z].*?(?:\s)2\.\s+[A-Z]/g.test(cleanPText)) {
+                 const parts = cleanPText.split(/(?=\s\d\.\s+[A-Z])/);
                  parts.forEach(part => { if (part.trim()) parsedBlocks.push({ type: 'list-item', text: part.trim() }); });
              } else {
-                 parsedBlocks.push({ type: 'p', text: blockText });
+                 const upperP = cleanPText.toUpperCase();
+                 if (upperP === currentSection || (upperP.startsWith("CHAPTER") && currentSection.startsWith("CHAPTER"))) continue; 
+                 parsedBlocks.push({ type: 'p', text: cleanPText });
              }
         }
     }
@@ -118,7 +129,7 @@ function parseMarkdownToBlocks(text: string) {
 
 export async function POST(req: Request) {
   try {
-    const { projectId, chapterKey } = await req.json();
+    const { projectId, chapterKey, feedback } = await req.json();
 
     const projectRef = doc(db, "projects", projectId);
     const projectSnap = await getDoc(projectRef);
@@ -130,7 +141,6 @@ export async function POST(req: Request) {
 
     const structure = guidelines?.isCustomized ? guidelines.structure : defaultStructure;
     const formattingRules = guidelines?.formattingRules || "Standard Academic Format";
-
     const currentIndex = structure.findIndex((c: { key: string }) => c.key === chapterKey);
     const chapterLabel = currentIndex !== -1 ? structure[currentIndex].label : chapterKey;
 
@@ -141,11 +151,52 @@ export async function POST(req: Request) {
       for (let i = 1; i < currentIndex; i++) {
         const prevKey = structure[i].key;
         if (content && content[prevKey]) {
-          // Reconstruct the text purely for the AI's memory
-          const textVersion = content[prevKey].map((b: any) => b.type === 'h1' ? `# ${b.text}` : b.text).join('\n\n');
+          let textVersion = "";
+          if (Array.isArray(content[prevKey])) {
+             textVersion = content[prevKey].map((b: any) => {
+                 if (b.type === 'h1') return `# ${b.text}`;
+                 if (b.type === 'h2') return `## ${b.text}`;
+                 if (b.type === 'h3') return `### ${b.text}`;
+                 return b.text;
+             }).join('\n\n');
+          } else {
+             textVersion = content[prevKey];
+          }
           memoryContext += `\n[${structure[i].label}]:\n${textVersion}\n`;
         }
       }
+    }
+
+    const feedbackInstruction = feedback 
+      ? `\n\nURGENT SUPERVISOR CORRECTION: The user's supervisor rejected the previous draft and requested the following changes:\n"${feedback}"\nRewrite the entire section strictly adhering to this feedback.`
+      : "";
+
+    // 🚨 CONTEXT-AWARE RULES (This stops the 1.0 Introduction hallucination)
+    let specificRules = "";
+    if (chapterKey === "preliminaryPages") {
+      specificRules = `
+      CRITICAL PRELIMINARY PAGES RULES:
+      1. NO INTRODUCTION: Do not write any conversational intro (e.g., "This section encompasses...").
+      2. NO TITLE PAGE: Do not generate a title page.
+      3. NO NUMBERING: Do NOT use academic numbering (e.g., 1.1, 1.2) for these pages.
+      4. EXACT HEADINGS: You MUST generate EXACTLY these sections in this exact order, each starting with a Level 1 Markdown heading (#):
+         # DECLARATION
+         (Write the declaration text here)
+         # APPROVAL
+         (Write the approval text here)
+         # DEDICATION
+         (Write the dedication text here)
+         # ACKNOWLEDGEMENT
+         (Write the acknowledgement text here)
+         # ABSTRACT
+         (Write the abstract text here)
+      `;
+    } else {
+      specificRules = `
+      1. FORMAL TITLE: YOU MUST start your response with the formal Chapter Title in capital letters (e.g., CHAPTER THREE: METHODOLOGY).
+      2. INTRODUCTION HEADING: The very next line MUST be the introduction heading (e.g., 3.0 Introduction). Do not skip straight to X.2.
+      3. ACADEMIC NUMBERING: Use standard academic numbering (1.1, 1.2, 1.3) for sub-headings.
+      `;
     }
 
     const prompt = `
@@ -154,40 +205,38 @@ export async function POST(req: Request) {
       ${memoryContext}
 
       Your explicit task: Write the exact content ONLY for the section named: "${chapterLabel.toUpperCase()}".
+      ${feedbackInstruction}
       
-      CRITICAL RULES - YOU MUST OBEY THESE STRICTLY:
-      1. NO INDEXING ALLOWED: Do NOT generate a Table of Contents, List of Tables, or List of Figures. These will be auto-generated by the system later.
-      2. FORMAL TITLE: YOU MUST start your response with the formal Chapter Title in capital letters.
-      3. INTRODUCTION HEADING: The very next line MUST be the introduction heading (e.g., 3.0 Introduction). Do not skip straight to X.2.
-      4. ACADEMIC NUMBERING: Use standard academic numbering (1.1, 1.2, 1.3) for sub-headings.
-      5. NO BULLET POINTS: Present information in standard academic paragraphs.
-      6. TABLES ALLOWED: When presenting structured data, use standard Markdown Tables.
-      7. CONCEPTUAL FRAMEWORKS & DIAGRAMS: Write a detailed theoretical description paragraph, followed immediately by: [INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE].
-      8. SINGLE ISOLATED SECTION: If the requested section is "Declaration", write ONLY the Declaration body.
-      9. CLEAN PARAGRAPHING: Do NOT output HTML tags.
-      10. FORMATTING: Apply formatting rules: ${formattingRules}
+      ${specificRules}
+      
+      GENERAL RULES:
+      - NO INDEXING ALLOWED: Do NOT generate a Table of Contents, List of Tables, or List of Figures. These will be auto-generated by the system later. If the requested section implies these, output exactly this placeholder on a new line: [SYSTEM_AUTO_INDEX]
+      - NO BULLET POINTS: Use standard academic paragraphs.
+      - TABLES ALLOWED: When presenting structured data, you MUST use standard Markdown Tables.
+      - CONCEPTUAL FRAMEWORKS & DIAGRAMS: You cannot draw visual diagrams. Write a detailed theoretical description paragraph, followed immediately by this exact placeholder on a new line: [INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE].
+      - SINGLE ISOLATED SECTION: If the requested section is "Declaration", write ONLY the Declaration body.
+      - CLEAN PARAGRAPHING: Do NOT output HTML tags.
+      - FORMATTING: Apply the university formatting rules provided: ${formattingRules}
     `;
 
     const result = await generateWithResiliency(prompt);
     let generatedText = result.response.text().trim();
 
-    generatedText = generatedText.replace(/```(md|markdown|html)?/gi, "").replace(/```/g, "").trim();
+    generatedText = generatedText.replace(/```(md|markdown|html)?/gi, "").replace(/
+```/g, "").trim();
     generatedText = generatedText.replace(/^(Here is|Sure|Certainly).*?\n/i, "").trim();
 
-    // Parse the raw markdown into clean JSON blocks!
     const jsonBlocks = parseMarkdownToBlocks(generatedText);
 
     await updateDoc(projectRef, {
       [`content.${chapterKey}`]: jsonBlocks,
-      progress: projectData.progress + 5 
+      progress: feedback ? projectData.progress : projectData.progress + 5 
     });
 
     return NextResponse.json({ chapterContent: jsonBlocks }, { status: 200 });
 
   } catch (error: any) {
-    if (error.message === "ALL_MODELS_EXHAUSTED") {
-      return NextResponse.json({ code: "HIGH_TRAFFIC", error: "System facing high traffic." }, { status: 503 });
-    }
+    if (error.message === "ALL_MODELS_EXHAUSTED") return NextResponse.json({ code: "HIGH_TRAFFIC", error: "System is facing high traffic. Please try again." }, { status: 503 });
     return NextResponse.json({ error: "Failed to generate chapter" }, { status: 500 });
   }
 }
