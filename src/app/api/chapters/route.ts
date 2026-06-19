@@ -3,10 +3,8 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 
-// Initialize AI (Do not bind a default model globally anymore)
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-// Fallback structure in case guidelines weren't uploaded
 const defaultStructure = [
   { key: "guidelines", label: "1. Faculty Guidelines" },
   { key: "preliminaryPages", label: "2. Preliminary Pages" },
@@ -17,18 +15,10 @@ const defaultStructure = [
   { key: "chapter5", label: "7. Conclusion" },
 ];
 
-// Utility to pause execution for backoff
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- THE RESILIENCY ENGINE (QUALITY FIRST) ---
 async function generateWithResiliency(prompt: string) {
-  // The Corrected Etomu Cascade
-  const cascade = [
-    "gemini-3.1-pro-preview",
-    "gemini-2.5-pro",
-    "gemini-3.5-flash" 
-  ];
-
+  const cascade = ["gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-3.5-flash"];
   const MAX_RETRIES_PER_MODEL = 2; 
 
   for (let i = 0; i < cascade.length; i++) {
@@ -37,136 +27,167 @@ async function generateWithResiliency(prompt: string) {
 
     for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
       try {
-        console.log(`[Attempt ${attempt}] Sending request to ${currentModelName}...`);
         return await model.generateContent(prompt);
       } catch (error: any) {
-        // Detect 503 Service Unavailable or High Demand errors
-        const isTrafficError = 
-          error.status === 503 || 
-          error.message?.includes("503") || 
-          error.message?.includes("high demand");
-
+        const isTrafficError = error.status === 503 || error.message?.includes("503") || error.message?.includes("high demand");
         if (isTrafficError) {
           if (attempt < MAX_RETRIES_PER_MODEL) {
-            const delay = 1000 * attempt; 
-            console.warn(`Traffic spike on ${currentModelName}. Retrying in ${delay}ms...`);
-            await sleep(delay);
+            await sleep(1000 * attempt);
           } else {
-            console.warn(`Exhausted retries for ${currentModelName}. Cascading to next model.`);
             break; 
           }
         } else {
-          // If it's a 400 Bad Request, API key issue, or context limit hit, throw it immediately
           throw error; 
         }
       }
     }
   }
-
   throw new Error("ALL_MODELS_EXHAUSTED");
+}
+
+// 🚨 THE SERVER-SIDE AST PARSER
+function parseMarkdownToBlocks(text: string) {
+    let cleanText = text;
+    cleanText = cleanText.replace(/PRELIMINARY PAGES/gi, '');
+    cleanText = cleanText.replace(/^(#\s*)?(\*\*)?APPENDICES(\*\*)?\s*$/gim, '');
+    cleanText = cleanText.replace(/\[SYSTEM_AUTO_INDEX\]/g, '');
+    cleanText = cleanText.replace(/\*\*(TABLE OF CONTENTS|LIST OF TABLES|LIST OF FIGURES|LIST OF ACRONYMS|DECLARATION|APPROVAL|DEDICATION|ACKNOWLEDGEMENT|ABSTRACT|CHAPTER.*?)\*\*/gim, '$1');
+    cleanText = cleanText.replace(/^---\s*(.*)$/gim, '# $1');
+    cleanText = cleanText.replace(/(CHAPTER\s+[A-Z]+.*?)\s*#*\s*(\d\.0\s+INTRODUCTION)/gi, '$1\n\n## $2');
+    cleanText = cleanText.replace(/^(CHAPTER\s+(ONE|TWO|THREE|FOUR|FIVE|SIX|\d+).*?)\s*$/gim, '# $1');
+
+    const rawBlocks = cleanText.split(/\n\n+/);
+    const parsedBlocks: any[] = [];
+    let currentSection = "";
+
+    for (let i = 0; i < rawBlocks.length; i++) {
+        let blockText = rawBlocks[i].trim();
+        if (!blockText || blockText.match(/^[-*]{3,}$/)) continue;
+
+        if (blockText.includes("[PAGE BREAK]")) {
+             parsedBlocks.push({ type: 'page-break', text: '' });
+             continue;
+        }
+
+        const isTable = blockText.includes('|') && blockText.includes('\n') && /^[|\-\s:]+$/m.test(blockText);
+        
+        if (isTable) {
+             if (["TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES", "LIST OF ACRONYMS"].includes(currentSection)) {
+                 continue; // Destroy fake AI tables
+             }
+             const lines = blockText.split('\n');
+             const tableStart = lines.findIndex(l => l.trim().startsWith('|'));
+             if (tableStart > 0) parsedBlocks.push({ type: 'p', text: lines.slice(0, tableStart).join('\n') });
+             parsedBlocks.push({ type: 'table', text: lines.slice(tableStart).join('\n') });
+             continue;
+        }
+
+        if (blockText.startsWith("# ")) {
+             const h1Text = blockText.replace(/^#+\s*/, '').replace(/[#*]/g, '').trim();
+             currentSection = h1Text.toUpperCase(); 
+
+             let isDuplicate = false;
+             for (let j = parsedBlocks.length - 1; j >= 0; j--) {
+                 if (parsedBlocks[j].type === 'page-break') continue; 
+                 if (parsedBlocks[j].type === 'h1') {
+                     const prevUpper = parsedBlocks[j].text.toUpperCase();
+                     if (prevUpper === currentSection || (prevUpper.startsWith("CHAPTER") && currentSection.startsWith("CHAPTER"))) {
+                         isDuplicate = true;
+                     }
+                 }
+                 break; 
+             }
+             if (isDuplicate) continue;
+
+             parsedBlocks.push({ type: 'h1', text: h1Text });
+        } else if (blockText.startsWith("## ")) {
+             parsedBlocks.push({ type: 'h2', text: blockText.replace(/^#+\s*/, '').replace(/[#*]/g, '').trim() });
+        } else if (blockText.startsWith("### ")) {
+             parsedBlocks.push({ type: 'h3', text: blockText.replace(/^#+\s*/, '').replace(/[#*]/g, '').trim() });
+        } else {
+             if (/(?:\s|^)1\.\s+[A-Z].*?(?:\s)2\.\s+[A-Z]/g.test(blockText)) {
+                 const parts = blockText.split(/(?=\s\d\.\s+[A-Z])/);
+                 parts.forEach(part => { if (part.trim()) parsedBlocks.push({ type: 'list-item', text: part.trim() }); });
+             } else {
+                 parsedBlocks.push({ type: 'p', text: blockText });
+             }
+        }
+    }
+    return parsedBlocks;
 }
 
 export async function POST(req: Request) {
   try {
     const { projectId, chapterKey } = await req.json();
 
-    // 1. Fetch the project state from Firestore
     const projectRef = doc(db, "projects", projectId);
     const projectSnap = await getDoc(projectRef);
 
-    if (!projectSnap.exists()) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
-    }
+    if (!projectSnap.exists()) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
     const projectData = projectSnap.data();
     const { topic, course, faculty, content, guidelines } = projectData;
 
-    // 2. Extract Dynamic Structure & Formatting
     const structure = guidelines?.isCustomized ? guidelines.structure : defaultStructure;
     const formattingRules = guidelines?.formattingRules || "Standard Academic Format";
 
-    // Find where we currently are in the document
     const currentIndex = structure.findIndex((c: { key: string }) => c.key === chapterKey);
     const chapterLabel = currentIndex !== -1 ? structure[currentIndex].label : chapterKey;
 
-    // 3. Build the DYNAMIC Context Memory Layer
-    let memoryContext = `
-      University Faculty: ${faculty || "General"}
-      Course: ${course || "General"}
-      Research Topic: ${topic}
-    `;
+    let memoryContext = `University Faculty: ${faculty || "General"}\nCourse: ${course || "General"}\nResearch Topic: ${topic}`;
 
-    // Automatically inject ALL prior generated chapters in sequential order
     if (currentIndex > 1) { 
       memoryContext += `\n\n--- PREVIOUSLY GENERATED CONTENT FOR CONTEXT ---\n`;
       for (let i = 1; i < currentIndex; i++) {
         const prevKey = structure[i].key;
         if (content && content[prevKey]) {
-          memoryContext += `\n[${structure[i].label}]:\n${content[prevKey]}\n`;
+          // Reconstruct the text purely for the AI's memory
+          const textVersion = content[prevKey].map((b: any) => b.type === 'h1' ? `# ${b.text}` : b.text).join('\n\n');
+          memoryContext += `\n[${structure[i].label}]:\n${textVersion}\n`;
         }
       }
     }
 
-    // 4. The Master Unified Prompt (With Strict ToC Ban)
     const prompt = `
       You are an expert academic research writer drafting a final-year university project.
-      
       Project Memory Context:
       ${memoryContext}
 
       Your explicit task: Write the exact content ONLY for the section named: "${chapterLabel.toUpperCase()}".
       
       CRITICAL RULES - YOU MUST OBEY THESE STRICTLY:
-      1. NO INDEXING ALLOWED: Do NOT generate a Table of Contents, List of Tables, or List of Figures. These will be auto-generated by the system later. If the requested section implies these, output exactly this placeholder on a new line: [SYSTEM_AUTO_INDEX]
-      2. FORMAL TITLE: YOU MUST start your response with the formal Chapter Title in capital letters (e.g., CHAPTER THREE: METHODOLOGY or exactly what "${chapterLabel.toUpperCase()}" implies).
-      3. INTRODUCTION HEADING: The very next line MUST be the introduction heading (e.g., 3.0 Introduction or 3.1 Introduction) before you write the first paragraph. Do not skip straight to X.2.
-      4. ACADEMIC NUMBERING: Use standard academic numbering (1.1, 1.2, 1.3) for all subsequent sub-headings to maintain a logical flow.
-      5. NO BULLET POINTS: Do not use bullet points or dashed lists under any circumstances. Present information in standard academic paragraphs. If a sequential list is strictly required, use formal numbering (1., 2., 3.).
-      6. TABLES ALLOWED: When presenting structured data, you MUST use standard Markdown Tables (using | and -). Do not write tables as plain text paragraphs.
-      7. CONCEPTUAL FRAMEWORKS & DIAGRAMS: You cannot draw visual diagrams. If a conceptual framework or diagram is required, write a detailed theoretical description paragraph explaining the variables and their relationships, followed immediately by this exact placeholder on a new line: [INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE].
-      8. NO EXCESSIVE BOLDING: Use bolding sparingly. Do not bold entire paragraphs. Use it only for main headings.
-      9. SINGLE ISOLATED SECTION: If the requested section is "Declaration", write ONLY the Declaration body. Do not group multiple preliminary pages together. 
-      10. CLEAN PARAGRAPHING: Do NOT output HTML tags (<p>, <br>, <b>, <span>). Use standard double line breaks for paragraphs. 
-      11. NO CONVERSATIONAL FILLER: Do not write introductory phrases. The very first word you output must be the Chapter Title.
-      12. ACADEMIC TONE: Ensure the tone is formal and rigorous. For body chapters, cite theoretical literature where appropriate. 
-      13. FORMATTING: Apply the university formatting rules provided: ${formattingRules}
-      14. PLACEHOLDERS: Use standard brackets like [Student Name] or [University Name] where specific personal data is missing.
+      1. NO INDEXING ALLOWED: Do NOT generate a Table of Contents, List of Tables, or List of Figures. These will be auto-generated by the system later.
+      2. FORMAL TITLE: YOU MUST start your response with the formal Chapter Title in capital letters.
+      3. INTRODUCTION HEADING: The very next line MUST be the introduction heading (e.g., 3.0 Introduction). Do not skip straight to X.2.
+      4. ACADEMIC NUMBERING: Use standard academic numbering (1.1, 1.2, 1.3) for sub-headings.
+      5. NO BULLET POINTS: Present information in standard academic paragraphs.
+      6. TABLES ALLOWED: When presenting structured data, use standard Markdown Tables.
+      7. CONCEPTUAL FRAMEWORKS & DIAGRAMS: Write a detailed theoretical description paragraph, followed immediately by: [INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE].
+      8. SINGLE ISOLATED SECTION: If the requested section is "Declaration", write ONLY the Declaration body.
+      9. CLEAN PARAGRAPHING: Do NOT output HTML tags.
+      10. FORMATTING: Apply formatting rules: ${formattingRules}
     `;
 
-    // 5. Generate the Chapter using the Resilient Fallback Engine
     const result = await generateWithResiliency(prompt);
     let generatedText = result.response.text().trim();
 
-    // 6. Safety Cleanup: Strip out conversational intro phrases
     generatedText = generatedText.replace(/```(md|markdown|html)?/gi, "").replace(/```/g, "").trim();
     generatedText = generatedText.replace(/^(Here is|Sure|Certainly).*?\n/i, "").trim();
 
-    // Strict Markdown Cleanup: Removes stray asterisks to enforce clean text, but leaves table pipes (|) intact
-    generatedText = generatedText.replace(/\*/g, ""); 
+    // Parse the raw markdown into clean JSON blocks!
+    const jsonBlocks = parseMarkdownToBlocks(generatedText);
 
-    // 7. Auto-Save back to Firestore & Update Progress
     await updateDoc(projectRef, {
-      [`content.${chapterKey}`]: generatedText,
+      [`content.${chapterKey}`]: jsonBlocks,
       progress: projectData.progress + 5 
     });
 
-    return NextResponse.json({ chapterContent: generatedText }, { status: 200 });
+    return NextResponse.json({ chapterContent: jsonBlocks }, { status: 200 });
 
   } catch (error: any) {
-    console.error("Error generating chapter:", error);
-
-    // CATCH THE CUSTOM CASCADE FAILURE
     if (error.message === "ALL_MODELS_EXHAUSTED") {
-      return NextResponse.json(
-        { 
-          code: "HIGH_TRAFFIC", 
-          error: "Our System is currently facing exceptionally high traffic. Please try again in a few minutes." 
-        }, 
-        { status: 503 }
-      );
+      return NextResponse.json({ code: "HIGH_TRAFFIC", error: "System facing high traffic." }, { status: 503 });
     }
-
-    // Default fallback for Firebase errors or bad requests
     return NextResponse.json({ error: "Failed to generate chapter" }, { status: 500 });
   }
 }
