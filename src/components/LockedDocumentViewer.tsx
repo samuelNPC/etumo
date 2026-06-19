@@ -28,9 +28,14 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
 
   // Format internal text (headings, bolding, paragraphs)
   const formatText = (text: string) => {
-    return text.split('\n').map((line, idx) => {
+    // Aggressively collapse 3+ empty lines down to just 2 to fix the massive spacing issue
+    const normalizedText = text.replace(/\n{3,}/g, '\n\n');
+
+    return normalizedText.split('\n').map((line, idx) => {
       const trimmedLine = line.trim();
-      if (!trimmedLine) return <br key={idx} />;
+      
+      // Instead of an invisible <br> that stacks up, use a controlled height spacer
+      if (!trimmedLine) return <div key={idx} className="h-4"></div>;
 
       // Handle H1 / Chapter Titles (Auto-centered)
       if (trimmedLine.startsWith("# ")) {
@@ -49,7 +54,7 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
       if (trimmedLine.includes("**")) {
         const parts = trimmedLine.split(/(\*\*.*?\*\*)/g);
         return (
-          <p key={idx} className="mb-4 text-sm md:text-[16px] leading-[2] text-justify">
+          <p key={idx} className="mb-2 text-sm md:text-[16px] leading-[2] text-justify">
             {parts.map((part, i) => 
               part.startsWith("**") && part.endsWith("**") 
                 ? <strong key={i} className="font-bold">{part.slice(2, -2)}</strong> 
@@ -61,11 +66,11 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
 
       // Center align placeholder brackets (e.g., [INSERT LOGO HERE])
       if (trimmedLine.startsWith("[") && trimmedLine.endsWith("]")) {
-        return <p key={idx} className="mb-4 text-sm md:text-[16px] leading-[2] text-center font-bold text-gray-500">{line}</p>;
+        return <p key={idx} className="mb-2 text-sm md:text-[16px] leading-[2] text-center font-bold text-gray-500">{line}</p>;
       }
 
       // Standard Paragraph
-      return <p key={idx} className="mb-4 text-sm md:text-[16px] leading-[2] text-justify">{line}</p>;
+      return <p key={idx} className="mb-2 text-sm md:text-[16px] leading-[2] text-justify">{line}</p>;
     });
   };
 
@@ -73,20 +78,19 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     return <div className="p-10 text-center text-gray-500 font-mono">Select a chapter to load the preview...</div>;
   }
 
-  // 🚨 1. HTML SANITIZER: Smartly convert tags to text formatting so lines don't merge
+  // 🚨 1. AGGRESSIVE SANITIZER: Nuke all HTML and HTML spaces
   let cleanContent = content
+    .replace(/&nbsp;/gi, ' ') // Strip non-breaking spaces that cause weird gaps
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n\n')
     .replace(/<\/div>/gi, '\n')
     .replace(/<h[1-6][^>]*>/gi, '\n# ')
     .replace(/<\/h[1-6]>/gi, '\n')
     .replace(/<(b|strong)[^>]*>/gi, '**')
-    .replace(/<\/(b|strong)>/gi, '**');
+    .replace(/<\/(b|strong)>/gi, '**')
+    .replace(/<[^>]+>/g, ''); // Nuke any remaining rogue HTML attributes
 
-  // Nuke any remaining rogue HTML attributes (like <div align="center">)
-  cleanContent = cleanContent.replace(/<[^>]+>/g, '');
-
-  // 🚨 2. BULLETPROOF LINE-BY-LINE PAGINATION ENGINE
+  // 🚨 2. BULLETPROOF PAGE PARSER
   const lines = cleanContent.split('\n');
   const pages: string[] = [];
   let currentPage: string[] = [];
@@ -94,29 +98,25 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
   const pageBreakTriggers = [
     "DECLARATION", "APPROVAL", "DEDICATION", "ACKNOWLEDGEMENT", "ACKNOWLEDGEMENTS",
     "ABSTRACT", "TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES", 
-    "LIST OF ACRONYMS", "LIST OF ABBREVIATIONS"
+    "LIST OF ACRONYMS", "LIST OF ABBREVIATIONS", "PAGE BREAK"
   ];
 
   for (let i = 0; i < lines.length; i++) {
     const originalLine = lines[i];
-    const trimmedLine = originalLine.trim();
-    // Strip markdown formatting for pure keyword matching
-    const upperLine = trimmedLine.toUpperCase().replace(/^#+\s*/, ''); 
+    
+    // Create a perfectly clean string for matching: uppercase, no asterisks, no punctuation, no spaces on ends
+    const cleanLineToMatch = originalLine.toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
 
-    // Is this a chapter heading? (Must be short so we don't accidentally split on a paragraph starting with "Chapter")
-    const isChapterHeading = upperLine.startsWith("CHAPTER ") && upperLine.length < 60;
+    // Kill duplicate title injections entirely
+    if (cleanLineToMatch === "PRELIMINARY PAGES" || cleanLineToMatch === "APPENDICES") {
+      continue;
+    }
 
-    if (
-      trimmedLine === "---" || 
-      trimmedLine === "***" || 
-      trimmedLine === "[PAGE BREAK]" || 
-      upperLine === "PRELIMINARY PAGES" || 
-      upperLine === "APPENDICES" ||
-      pageBreakTriggers.includes(upperLine) ||
-      isChapterHeading
-    ) {
-      
-      // 1. Save the current page to the stack (if it has text)
+    const isChapterHeading = cleanLineToMatch.startsWith("CHAPTER ") && cleanLineToMatch.length < 60;
+    const isTrigger = pageBreakTriggers.includes(cleanLineToMatch);
+
+    if (isTrigger || isChapterHeading) {
+      // 1. Save the current page (if it actually has content)
       if (currentPage.join('').trim().length > 0) {
         pages.push(currentPage.join('\n'));
       }
@@ -124,18 +124,21 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
       // 2. Start a fresh page
       currentPage = [];
 
-      // 3. If it's a valid heading, stamp it at the top of the new page as an H1
-      if (pageBreakTriggers.includes(upperLine) || isChapterHeading) {
-        currentPage.push(`# ${upperLine}`);
+      // 3. Stamp the trigger word perfectly formatted as an H1 at the top of the new page
+      if (cleanLineToMatch !== "PAGE BREAK") {
+        currentPage.push(`# ${originalLine.replace(/[*#]/g, '').trim()}`);
       }
-
     } else {
-      // Normal line of text, keep writing on the current page
+      // Prevent the page from starting with massive empty space
+      if (currentPage.length === 0 && originalLine.trim() === '') {
+        continue;
+      }
+      // Add standard text line to current page
       currentPage.push(originalLine);
     }
   }
 
-  // Push the very last page to the stack
+  // Push the final page
   if (currentPage.join('').trim().length > 0) {
     pages.push(currentPage.join('\n'));
   }
