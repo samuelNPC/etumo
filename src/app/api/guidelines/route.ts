@@ -3,58 +3,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 
-// Initialize AI without binding a specific model globally
+// Upgraded to the maximum quality Pro model
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-
-// Utility to pause execution for backoff
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// --- THE RESILIENCY ENGINE (MULTIMODAL DOCUMENT PARSING) ---
-async function parseDocumentWithResiliency(promptParts: any[]) {
-  // The Corrected Etomu Cascade
-const cascade = [
-  "gemini-3.1-pro-preview", // Note the -preview suffix!
-  "gemini-2.5-pro",
-  "gemini-3.5-flash" 
-];
-
-  const MAX_RETRIES_PER_MODEL = 2; 
-
-  for (let i = 0; i < cascade.length; i++) {
-    const currentModelName = cascade[i];
-    const model = genAI.getGenerativeModel({ model: currentModelName });
-
-    for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
-      try {
-        console.log(`[Doc Parsing - Attempt ${attempt}] Sending request to ${currentModelName}...`);
-        return await model.generateContent(promptParts);
-      } catch (error: any) {
-        // Detect 503 Service Unavailable or High Demand errors
-        const isTrafficError = 
-          error.status === 503 || 
-          error.message?.includes("503") || 
-          error.message?.includes("high demand");
-        
-        if (isTrafficError) {
-          if (attempt < MAX_RETRIES_PER_MODEL) {
-            const delay = 1000 * attempt; 
-            console.warn(`Traffic spike on ${currentModelName}. Retrying in ${delay}ms...`);
-            await sleep(delay);
-          } else {
-            console.warn(`Exhausted retries for ${currentModelName}. Cascading to next model.`);
-            break; // Move to the next model in the cascade array
-          }
-        } else {
-          // If it's a 400 Bad Request, API key issue, or context limit hit, throw it immediately
-          throw error; 
-        }
-      }
-    }
-  }
-  
-  // If all models fail
-  throw new Error("ALL_MODELS_EXHAUSTED");
-}
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
 export async function POST(req: Request) {
   try {
@@ -63,124 +14,84 @@ export async function POST(req: Request) {
     const projectId = formData.get("projectId") as string;
 
     if (!file || !projectId) {
-      return NextResponse.json({ error: "Missing file or Project ID." }, { status: 400 });
+      return NextResponse.json({ error: "Missing file or project ID" }, { status: 400 });
     }
 
-    const mimeType = file.type; 
-
-    // --- STRICT GATEKEEPER: Prevent Google API Crashes ---
-    const supportedTypes = [
-      "application/pdf", 
-      "text/plain", 
-      "image/png", 
-      "image/jpeg", 
-      "image/jpg"
-    ];
-
-    if (!supportedTypes.includes(mimeType)) {
-      return NextResponse.json(
-        { error: "Microsoft Word documents are not supported by the AI. Please 'Save As PDF' and upload the PDF version." },
-        { status: 400 }
-      );
-    }
-
+    // 1. Convert the PDF file to Base64 to feed natively into Gemini
     const arrayBuffer = await file.arrayBuffer();
-    const base64Data = Buffer.from(arrayBuffer).toString("base64");
+    const buffer = Buffer.from(arrayBuffer);
+    const base64Data = buffer.toString("base64");
 
-    // 🚨 STRICT PROMPT: Enforces Appendices Extraction and JSON integrity
+    // 2. The Extraction Prompt enforcing Strict JSON Output
     const prompt = `
-      You are an expert academic structuring AI. Analyze this uploaded university research guideline document.
-      Extract the required research structure, chapter breakdowns, and formatting rules.
+      Analyze this university faculty guidelines document for a final year academic research project.
+      Extract the exact chapter structure required and any specific formatting rules (e.g., font size, spacing, citation style).
       
-      CRITICAL STRUCTURAL EXTREMUM:
-      You must look closely for required post-chapter items such as Appendices, Data Collection Instruments, Questionnaires, Interview Guides, Research Budgets, and Timeframes. Ensure these are explicitly appended to the end of the structure array.
-
-      RULES:
-      1. Return ONLY a raw JSON object. Do not include any conversational filler, introductory phrases, or markdown formatting (like \`\`\`json).
-      2. The output MUST start with "{" and end with "}".
-      3. Use sequential keys ('chapter1', 'chapter2', ..., 'appendices') for the structure array items.
-
-      Expected JSON Format:
+      You MUST respond with a valid JSON object using this exact schema:
       {
-        "formattingRules": "Extracted rules like font size, spacing, citation style (e.g., APA 7th). If not found, write 'Standard Academic Format'.",
+        "isCustomized": true,
+        "formattingRules": "String summarizing font, spacing, and citation requirements.",
         "structure": [
-          { "key": "guidelines", "label": "1. Faculty Guidelines" },
-          { "key": "preliminaryPages", "label": "2. Preliminary Pages" },
-          { "key": "chapter1", "label": "3. Exact Name of First Chapter" },
-          { "key": "appendices", "label": "X. Appendices (Questionnaires, Instruments & Budget)" }
+          { "key": "preliminaryPages", "label": "Exact name for Preliminary Pages" },
+          { "key": "chapter1", "label": "Exact name for Chapter 1" }
+          // ... continue for all required chapters and appendices
         ]
       }
+      
+      CRITICAL RULES:
+      1. Use camelCase for the "key" (e.g., "chapter1", "chapter2", "appendices").
+      2. Ensure the "label" matches exactly what the university calls it (e.g., "CHAPTER ONE: INTRODUCTION" or "1.0 INTRODUCTION").
+      3. ALWAYS include a key for "preliminaryPages" at the beginning and "appendices" at the end if they are implied or mentioned.
+      4. Return ONLY the JSON object. Do not include markdown formatting blocks like \`\`\`json.
     `;
 
-    const promptParts = [
-      { inlineData: { data: base64Data, mimeType } },
+    // 3. Send to Gemini 2.5 Pro
+    const result = await model.generateContent([
       prompt,
-    ];
+      {
+        inlineData: {
+          data: base64Data,
+          mimeType: file.type || "application/pdf",
+        },
+      },
+    ]);
 
-    // 🚨 FAULT-TOLERANT ENGINE DESIGN: Process via our universal cascade
-    const result = await parseDocumentWithResiliency(promptParts);
-    let responseText = result.response.text().trim();
+    let jsonText = result.response.text().trim();
+    
+    // 4. Safety Cleanup: Strip out markdown JSON blocks if the AI includes them
+    jsonText = jsonText.replace(/```json/gi, "").replace(/
+```/g, "").trim();
 
-    // 🚨 SAFETY CLEANUP: Strips out markdown blocks and isolates the raw JSON string
-    responseText = responseText.replace(/```(json)?/gi, "").replace(/```/g, "").trim();
-    responseText = responseText.replace(/^(Here is|Sure|Certainly|I have).*?\n/i, "").trim();
+    // Parse the extracted JSON
+    const parsedGuidelines = JSON.parse(jsonText);
 
-    const jsonStart = responseText.indexOf('{');
-    const jsonEnd = responseText.lastIndexOf('}');
-    if (jsonStart !== -1 && jsonEnd !== -1) {
-        responseText = responseText.substring(jsonStart, jsonEnd + 1);
-    }
-
-    let extractedGuidelines;
-    try {
-      extractedGuidelines = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error("Failed to parse AI output as JSON. Cleaned payload:", responseText);
-      return NextResponse.json(
-        { error: "Structure parsing alignment anomaly. Please click apply again to re-sync." }, 
-        { status: 500 }
-      );
-    }
-
-    // Safety Loop: Guard workspace configuration properties so the component tracking flow doesn't break
-    if (!extractedGuidelines.structure.find((s: any) => s.key === "guidelines")) {
-        extractedGuidelines.structure.unshift({ key: "guidelines", label: "1. Faculty Guidelines" });
-    }
-
-    // Safety Loop: If the custom document somehow completely forgot appendices, force insert it at the end
-    if (!extractedGuidelines.structure.find((s: any) => s.key === "appendices")) {
-        extractedGuidelines.structure.push({ 
-          key: "appendices", 
-          label: `${extractedGuidelines.structure.length + 1}. Appendices (Instruments, Questionnaire & Budget)` 
-        });
-    }
-
+    // 5. Auto-Save the structure directly to the user's project in Firebase
     const projectRef = doc(db, "projects", projectId);
     await updateDoc(projectRef, {
-      guidelines: {
-        isCustomized: true,
-        ...extractedGuidelines
-      }
+      guidelines: parsedGuidelines,
     });
 
-    return NextResponse.json({ success: true, guidelines: extractedGuidelines }, { status: 200 });
+    return NextResponse.json({ success: true, guidelines: parsedGuidelines }, { status: 200 });
 
   } catch (error: any) {
-    console.error("General operational exception:", error);
+    console.error("Error parsing guidelines:", error);
 
-    // CATCH THE CUSTOM CASCADE FAILURE
-    if (error.message === "ALL_MODELS_EXHAUSTED") {
+    // 🚨 CATCH GEMINI HIGH TRAFFIC / 503 ERRORS
+    if (
+      error.status === 503 || 
+      (error.message && error.message.includes("503")) ||
+      (error.message && error.message.includes("high demand"))
+    ) {
       return NextResponse.json(
         { 
-          error: "Academic compilation nodes are currently receiving heavy university traffic. Please click apply again in a few seconds." 
+          code: "HIGH_TRAFFIC", 
+          error: "Our System is currently facing high traffic while reading your document. Please try again." 
         }, 
         { status: 503 }
       );
     }
 
-    return NextResponse.json(
-      { error: "Internal workspace error compiling data structure layout maps." },
-      { status: 500 }
-    );
+    // Default fallback for generic parsing errors
+    return NextResponse.json({ error: "Failed to parse guidelines document. Ensure it is a clear PDF." }, { status: 500 });
   }
 }
