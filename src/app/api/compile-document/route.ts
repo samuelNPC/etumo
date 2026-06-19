@@ -64,7 +64,8 @@ export async function POST(req: Request) {
                   ...parseInlineText(row[0].replace(/\*\*/g, '')),
                   new docx.TextRun({ text: "\t" + row[1], size: 24, font: "Times New Roman" })
                 ],
-                tabStops: [{ type: docx.TabStopType.RIGHT, position: 9000, leader: docx.TabStopLeader.DOT }],
+                // 🚨 FIX: Updated to docx.LeaderType.DOT and docx.TabStopPosition.RIGHT
+                tabStops: [{ type: docx.TabStopPosition.RIGHT, position: 9000, leader: docx.LeaderType.DOT }],
                 spacing: { after: 120 }
               }));
             });
@@ -204,7 +205,6 @@ export async function POST(req: Request) {
       return elements;
     };
 
-    // 🚨 YELLOW ETUMO WATERMARK HEADER FOR FREE TIER
     const createHeader = () => {
       if (!isWatermarked) return undefined;
       return new docx.Header({
@@ -214,7 +214,7 @@ export async function POST(req: Request) {
             children: [
               new docx.TextRun({ 
                 text: "⚠️ ETUMO.COM FREE EVALUATION COPY ⚠️", 
-                color: "D97706", // Etumo Yellow/Orange
+                color: "D97706", 
                 bold: true, 
                 size: 22, 
                 font: "Arial" 
@@ -225,7 +225,6 @@ export async function POST(req: Request) {
       });
     };
 
-    // 🚨 YELLOW ETUMO DISCLAIMER FOOTER
     const createFooter = () => new docx.Footer({
       children: [
         new docx.Paragraph({
@@ -234,7 +233,7 @@ export async function POST(req: Request) {
             ...(isWatermarked ? [
               new docx.TextRun({ 
                 text: "ETUMO.COM FREE EVALUATION COPY - ", 
-                color: "D97706", // Etumo Yellow/Orange
+                color: "D97706", 
                 bold: true, 
                 size: 20, 
                 font: "Arial" 
@@ -243,7 +242,7 @@ export async function POST(req: Request) {
             new docx.TextRun({
               children: [docx.PageNumber.CURRENT],
               font: "Times New Roman",
-              size: 24, // 12pt standard academic size
+              size: 24, 
             })
           ]
         })
@@ -316,7 +315,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // 🚨 FIX: Changed from PageNumberFormat to NumberFormat
     if (prelimChildren.length > 0) {
       docSections.push({
         properties: {
@@ -331,7 +329,6 @@ export async function POST(req: Request) {
       });
     }
 
-    // 🚨 FIX: Changed from PageNumberFormat to NumberFormat
     if (chapterChildren.length > 0) {
       docSections.push({
         properties: {
