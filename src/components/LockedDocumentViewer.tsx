@@ -63,11 +63,9 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
     // Only break the preliminary Pages basing on --- and use # to bold
     cleanText = cleanText.replace(/^---\s*(.*)$/gim, '# $1');
 
-    // Split merged headings like "CHAPTER TWO: LITERATURE REVIEW 2.0 INTRODUCTION"
-    cleanText = cleanText.replace(/(CHAPTER\s+[A-Z]+[^\d\n]*)\s+(\d\.0\s+INTRODUCTION)/gi, '$1\n\n## $2');
-
-    // Remove duplicate adjacent Chapter headings, keeping the second one
-    cleanText = cleanText.replace(/^(?:#\s*)?(CHAPTER\s+[A-Z]+[^\n]*)\s*\n+(?:\[PAGE BREAK\]\s*\n+)?(?=(?:#\s*)?CHAPTER\s+[A-Z]+)/gim, '');
+    // Split merged headings like "CHAPTER TWO: LITERATURE REVIEW ## 2.0 INTRODUCTION"
+    // (This catches stray # marks that the AI tried to embed in the same line)
+    cleanText = cleanText.replace(/(CHAPTER\s+[A-Z]+.*?)\s*#*\s*(\d\.0\s+INTRODUCTION)/gi, '$1\n\n## $2');
 
     // Force Chapter headings to have the # markdown tag
     cleanText = cleanText.replace(/^(CHAPTER\s+(ONE|TWO|THREE|FOUR|FIVE|SIX|\d+).*?)\s*$/gim, '# $1');
@@ -104,13 +102,31 @@ export default function LockedDocumentViewer({ content }: LockedDocumentViewerPr
         }
 
         if (blockText.startsWith("# ")) {
-             const h1Text = blockText.replace(/^#\s*/, '').trim();
+             // Nuke ALL stray # or * marks from hitting the frontend
+             const h1Text = blockText.replace(/^#+\s*/, '').replace(/[#*]/g, '').trim();
              currentSection = h1Text.toUpperCase(); // Track exactly what section we are in
+             
+             // 🚨 ROBUST DOUBLE HEADING KILLER
+             let isDuplicate = false;
+             for (let j = parsedBlocks.length - 1; j >= 0; j--) {
+                 if (parsedBlocks[j].type === 'page-break') continue; // Look past page breaks
+                 if (parsedBlocks[j].type === 'h1') {
+                     const prevUpper = parsedBlocks[j].text.toUpperCase();
+                     if (prevUpper === currentSection || (prevUpper.startsWith("CHAPTER") && currentSection.startsWith("CHAPTER"))) {
+                         isDuplicate = true;
+                     }
+                 }
+                 break; 
+             }
+             if (isDuplicate) continue;
+
              parsedBlocks.push({ type: 'h1', text: h1Text });
         } else if (blockText.startsWith("## ")) {
-             parsedBlocks.push({ type: 'h2', text: blockText.replace(/^##\s*/, '') });
+             // Nuke ALL stray # or * marks from hitting the frontend
+             parsedBlocks.push({ type: 'h2', text: blockText.replace(/^#+\s*/, '').replace(/[#*]/g, '').trim() });
         } else if (blockText.startsWith("### ")) {
-             parsedBlocks.push({ type: 'h3', text: blockText.replace(/^###\s*/, '') });
+             // Nuke ALL stray # or * marks from hitting the frontend
+             parsedBlocks.push({ type: 'h3', text: blockText.replace(/^#+\s*/, '').replace(/[#*]/g, '').trim() });
         } else {
              if (/(?:\s|^)1\.\s+[A-Z].*?(?:\s)2\.\s+[A-Z]/g.test(blockText)) {
                  const parts = blockText.split(/(?=\s\d\.\s+[A-Z])/);
