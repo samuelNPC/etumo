@@ -161,10 +161,11 @@ function WorkspaceContent() {
     (c) => c.key !== "guidelines" && !generatedChapters.includes(c.key)
   );
 
-  const fullDocumentContent = currentStructure
+    const fullDocumentContent = currentStructure
     .filter(c => c.key !== "guidelines" && project?.content[c.key])
-    .map(c => `### ${c.label.toUpperCase()}\n\n${project?.content[c.key]}`)
+    .map(c => project?.content[c.key])
     .join("\n\n\n[PAGE BREAK]\n\n\n");
+
 
   const handleGenerateChapter = async (chapterKey: string) => {
     if (!projectId) return;
