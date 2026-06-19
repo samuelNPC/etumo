@@ -40,8 +40,20 @@ export async function POST(req: Request) {
       "LIST OF ACRONYMS", "LIST OF ABBREVIATIONS"
     ];
 
-    const processTextToElements = (text: string) => {
-      const normalizedText = text.replace(/\n{3,}/g, '\n\n');
+    const processTextToElements = (rawString: string) => {
+      // 🚨 AGGRESSIVE BACKEND HTML SANITIZER
+      let cleanContent = rawString
+        .replace(/&nbsp;/gi, ' ') 
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n\n')
+        .replace(/<\/div>/gi, '\n')
+        .replace(/<h[1-6][^>]*>/gi, '\n# ')
+        .replace(/<\/h[1-6]>/gi, '\n')
+        .replace(/<(b|strong)[^>]*>/gi, '**')
+        .replace(/<\/(b|strong)>/gi, '**')
+        .replace(/<[^>]+>/g, ''); // Nuke any remaining rogue HTML attributes
+
+      const normalizedText = cleanContent.replace(/\n{3,}/g, '\n\n');
       const lines = normalizedText.split("\n");
       const elements: (docx.Paragraph | docx.Table)[] = [];
 
@@ -64,7 +76,6 @@ export async function POST(req: Request) {
                   ...parseInlineText(row[0].replace(/\*\*/g, '')),
                   new docx.TextRun({ text: "\t" + row[1], size: 24, font: "Times New Roman" })
                 ],
-                // 🚨 FIX: Updated to docx.LeaderType.DOT and docx.TabStopPosition.RIGHT
                 tabStops: [{ type: docx.TabStopPosition.RIGHT, position: 9000, leader: docx.LeaderType.DOT }],
                 spacing: { after: 120 }
               }));
