@@ -10,17 +10,17 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 // --- THE RESILIENCY ENGINE (WITH DYNAMIC TEMPERATURE) ---
 async function remediateDocumentWithResiliency(promptParts: any[], temperature: number) {
   // The Corrected Etomu Cascade
-const cascade = [
-  "gemini-3.1-pro-preview", // Note the -preview suffix!
-  "gemini-2.5-pro",
-  "gemini-3.5-flash" 
-];
+  const cascade = [
+    "gemini-3.1-pro-preview", // Note the -preview suffix!
+    "gemini-2.5-pro",
+    "gemini-3.5-flash" 
+  ];
 
   const MAX_RETRIES_PER_MODEL = 2; 
 
   for (let i = 0; i < cascade.length; i++) {
     const currentModelName = cascade[i];
-    
+
     // Inject the dynamic temperature into the model configuration for this specific attempt
     const model = genAI.getGenerativeModel({ 
       model: currentModelName,
@@ -37,7 +37,7 @@ const cascade = [
           error.status === 503 || 
           error.message?.includes("503") || 
           error.message?.includes("high demand");
-        
+
         if (isTrafficError) {
           if (attempt < MAX_RETRIES_PER_MODEL) {
             const delay = 1000 * attempt; 
@@ -54,7 +54,7 @@ const cascade = [
       }
     }
   }
-  
+
   throw new Error("ALL_MODELS_EXHAUSTED");
 }
 
@@ -78,29 +78,29 @@ export async function POST(req: Request) {
     let specificRules = "";
     if (type === "ai_bypass") {
       specificRules = `
-      1. REWRITE FOR AI BYPASS: Rewrite the document to sound entirely human and bypass AI detection systems.
+      1. REWRITE AI-FLAGGED TEXT: Visually scan the PDF. Focus ONLY on text with cyan, light blue, or purple background highlights. Rewrite these specific sections to sound entirely human and bypass AI detection systems.
       2. MAXIMIZE BURSTINESS: Drastically vary sentence lengths. Mix very short, punchy 5-word sentences with long, complex 30-word sentences.
       3. BANNED WORDS: Do NOT use recognizable AI words such as: delve, tapestry, crucial, underscore, multifaceted, paradigm, comprehensive, or testament.
       `;
     } else {
       specificRules = `
-      1. REWRITE FOR PLAGIARISM BYPASS: Rewrite flagged text to reduce n-gram similarity matching to 0% for originality checkers.
+      1. REWRITE PLAGIARISM-FLAGGED TEXT: Visually scan the PDF. Focus ONLY on text with red, pink, orange, or yellow background highlights. Rewrite these specific sections to reduce n-gram similarity matching to 0% for originality checkers.
       2. STRUCTURAL DISRUPTION: Change sentence structures completely (active to passive, split/merge sentences) and replace common vocabulary with academic synonyms.
       3. CITATION PROTECTION: You MUST preserve all in-text citations exactly as they appear, including names and dates formatted as (Author, Year).
       `;
     }
 
     const prompt = `
-      You are an expert academic editor and document reconstruction AI.
+      You are an expert academic editor, document reconstruction AI, and visual OCR system.
       I am providing you with a Turnitin Similarity Report PDF.
       
       YOUR TASK:
-      Reconstruct the entire body of this document from start to finish with the following STRICT RULES:
+      Reconstruct the entire body of this document from start to finish. You must visually scan the document for colored highlights and apply the following STRICT RULES:
       
       ${specificRules}
       
       DOCUMENT RECONSTRUCTION RULES:
-      4. PRESERVE CLEAN TEXT: Any text that is standard and unflagged must be output exactly as it is to preserve meaning.
+      4. PRESERVE UNFLAGGED TEXT EXACTLY: Any text with a plain white or transparent background is clean. You MUST output this text exactly as it is, word-for-word, to preserve the student's original work. Only apply rewrites to the highlighted sections mentioned above.
       5. REBUILD TABLES: If you encounter a table, you MUST reconstruct it perfectly using standard Markdown table format (using | and -). Do not write tables as plain text paragraphs.
       6. STRIP METADATA & ARTIFACTS: Completely ignore and remove page numbers, headers, footers, Turnitin report summaries, and similarity index pages at the end of the document. Only output the actual academic content.
       7. NO IMAGES: Ignore all images and graphs.
