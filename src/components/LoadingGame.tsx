@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 
 const STATUS_MESSAGES = [
-  "Initializing Etumo Remediation Engine...",
+  "Initializing Etomu Remediation Engine...",
   "Extracting raw document text and tables...",
   "Isolating flagged similarity clusters...",
   "Restructuring sentence syntax and tone...",
