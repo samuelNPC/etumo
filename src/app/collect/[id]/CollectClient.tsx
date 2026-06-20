@@ -6,6 +6,7 @@ interface InstrumentData {
   questionCount: number;
   sectionCount: number;
   previewText: string;
+  deadline?: string; // 🚨 ADDED DEADLINE PROPERTY
 }
 
 interface ParsedQuestion {
@@ -111,7 +112,27 @@ export default function CollectClient({ instrumentId, instrument }: CollectClien
           <p className="text-sm text-gray-500 font-medium mb-6 leading-relaxed">
             Thank you for participating. Your response has been securely transmitted to the researcher's database.
           </p>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Powered by Etumo Engine</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Powered by Etomu Engine</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 🚨 ADDED: CHECK IF DEADLINE HAS PASSED
+  const isClosed = instrument.deadline ? new Date() > new Date(instrument.deadline) : false;
+
+  if (isClosed) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6">
+        <div className="bg-white p-10 border border-gray-200 rounded-2xl shadow-xl text-center max-w-md w-full animate-in zoom-in-95 duration-500">
+          <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          </div>
+          <h1 className="text-2xl font-black tracking-tight text-gray-900 mb-2">Survey Closed</h1>
+          <p className="text-sm text-gray-500 font-medium mb-6 leading-relaxed">
+            The researcher has officially closed data collection for this instrument. Thank you for your interest!
+          </p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Powered by Etomu Engine</p>
         </div>
       </div>
     );
