@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { doc, updateDoc, collection, query, where, getDocs } from "firebase/firestore"; // 🚨 Added query imports
+import { doc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import LockedDocumentViewer from "@/components/LockedDocumentViewer";
 import PaymentModal from "@/components/PaymentModal";
 
@@ -27,6 +27,7 @@ export default function DataCollectorPage() {
 
   const [showPreview, setShowPreview] = useState(false);
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
+  const [deadline, setDeadline] = useState<string>(""); // 🚨 ADDED DEADLINE STATE
 
   const [paymentState, setPaymentState] = useState<{
     isActive: boolean;
@@ -40,7 +41,7 @@ export default function DataCollectorPage() {
     onSuccess: () => {},
   });
 
-  // 🚨 Track the logged-in user
+  // Track the logged-in user
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -80,13 +81,14 @@ export default function DataCollectorPage() {
     }
   };
 
-  // 🚨 Extracted binding logic to reuse for both Free and Paid tiers
+  // 🚨 Extracted binding logic to reuse for both Free and Paid tiers, now saving the deadline!
   const bindInstrumentToUser = async () => {
     if (analysisData?.instrumentId && user) {
       try {
         await updateDoc(doc(db, "instruments", analysisData.instrumentId), {
           userId: user.uid,
-          status: "active"
+          status: "active",
+          deadline: deadline || null // 🚨 SAVES DEADLINE TO DATABASE
         });
       } catch (error) {
         console.error("Failed to link instrument to user:", error);
@@ -97,7 +99,7 @@ export default function DataCollectorPage() {
   };
 
   const handlePayment = async () => {
-    // 🚨 LOGIN WALL: Stop them before payment if they aren't logged in
+    // LOGIN WALL: Stop them before payment if they aren't logged in
     if (!user) {
       alert("Please log in or create an account to deploy and track your instrument.");
       // Redirect to your login page, and send them back here after
@@ -105,7 +107,7 @@ export default function DataCollectorPage() {
       return;
     }
 
-    // 🚨 FREE TIER LINK CHECKER
+    // FREE TIER LINK CHECKER
     try {
       const q = query(collection(db, "instruments"), where("userId", "==", user.uid));
       const querySnapshot = await getDocs(q);
@@ -131,6 +133,7 @@ export default function DataCollectorPage() {
     });
   };
 
+  // 🚨 Ensured this points exactly to etomu.com
   const finalLink = `etomu.com/collect/${analysisData?.instrumentId || "demo"}`;
 
   const handleCopyLink = () => {
@@ -160,7 +163,7 @@ export default function DataCollectorPage() {
       <div className="w-full max-w-2xl bg-white/90 backdrop-blur-xl border border-white shadow-2xl p-8 sm:p-12 relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-500 rounded-2xl">
 
         <div className="mb-8">
-          <Link href="/workspace" className="text-xs font-bold text-gray-400 hover:text-black mb-4 inline-block uppercase tracking-widest transition-colors">&larr; Back to Workspace</Link>
+          <Link href="/dashboard" className="text-xs font-bold text-gray-400 hover:text-black mb-4 inline-block uppercase tracking-widest transition-colors">&larr; Back to Dashboard</Link>
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900 leading-tight">
             Research Instrument <br /> Digitization
           </h1>
@@ -243,6 +246,18 @@ export default function DataCollectorPage() {
                 <li className="flex items-center gap-2 text-sm text-gray-700 font-medium"><span className="text-blue-600">✓</span> Live Link Analytics & Tracking</li>
                 <li className="flex items-center gap-2 text-sm text-gray-700 font-medium"><span className="text-blue-600">✓</span> Automated AI Summary of Responses</li>
               </ul>
+
+              {/* 🚨 ADDED: DEADLINE PICKER */}
+              <div className="mt-5 pt-5 border-t border-gray-200">
+                <label className="block text-xs font-bold text-gray-900 uppercase tracking-widest mb-2">Set Collection Deadline (Optional)</label>
+                <input 
+                  type="datetime-local" 
+                  className="w-full bg-white border border-gray-300 p-3 rounded-lg outline-none focus:border-[#d97706] text-sm text-gray-700 font-medium font-sans"
+                  value={deadline}
+                  min={new Date().toISOString().slice(0, 16)} // Prevents selecting past dates
+                  onChange={(e) => setDeadline(e.target.value)}
+                />
+              </div>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
