@@ -5,9 +5,11 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { db, auth } from "@/lib/firebase";
 import { doc, getDoc, collection, addDoc, setDoc } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 import LockedDocumentViewer from "@/components/LockedDocumentViewer";
 import GuidelineUploader from "@/components/GuidelineUploader";
 import PaymentModal from "@/components/PaymentModal";
+import SmsVerificationGate from "@/components/SmsVerificationGate";
 
 interface ChapterStructure {
   key: string;
@@ -20,6 +22,7 @@ interface ProjectData {
   faculty: string;
   progress: number;
   freeEditsUsed?: number; 
+  isPremium?: boolean; // Added to flag fully unlocked projects
   guidelines?: {
     isCustomized: boolean;
     formattingRules: string;
@@ -77,6 +80,11 @@ function WorkspaceContent() {
   const [feedbackText, setFeedbackText] = useState<string>("");
   const [applyingCorrection, setApplyingCorrection] = useState<boolean>(false);
 
+  // Security & Entitlement States
+  const [isVerified, setIsVerified] = useState<boolean>(true);
+  const [showVerificationGate, setShowVerificationGate] = useState(false);
+  const [hasClaimedFreeProject, setHasClaimedFreeProject] = useState(false);
+
   const [paymentState, setPaymentState] = useState<{
     isActive: boolean;
     amount: number;
@@ -89,6 +97,24 @@ function WorkspaceContent() {
     onSuccess: () => {},
   });
 
+  // Verify Entitlement on Load
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          if (!userData.phoneVerified) setIsVerified(false);
+          if (userData.freeProjectClaimed) setHasClaimedFreeProject(true);
+        } else {
+          setIsVerified(false);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch Project
   useEffect(() => {
     if (!projectId) {
       setLoading(false);
@@ -127,9 +153,43 @@ function WorkspaceContent() {
     if (docSnap.exists()) setProject(docSnap.data() as ProjectData);
   };
 
-  const handleCreateProject = async (e: React.FormEvent) => {
+  // NEW PROJECT CREATION LOGIC WITH SECURITY GATE
+  const handleInitiateProjectCreation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customTopic.trim()) return;
+
+    // SCENARIO 1: First time user, hasn't verified phone. Show SMS Gate.
+    if (!isVerified && !hasClaimedFreeProject) {
+      setShowVerificationGate(true);
+      return;
+    }
+
+    // SCENARIO 2: User has already claimed free project. Hit them with paywall for full unlock.
+    if (hasClaimedFreeProject) {
+      setPaymentState({
+        isActive: true,
+        amount: 54000,
+        description: "Unlock Additional Premium Research Workspace",
+        onSuccess: () => {
+          setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
+          executeProjectCreation(true); // true = isPremium
+        }
+      });
+      return;
+    }
+
+    // SCENARIO 3: User is verified and hasn't claimed yet
+    executeProjectCreation(false);
+  };
+
+  const handleVerificationSuccess = async () => {
+    setShowVerificationGate(false);
+    setIsVerified(true);
+    setHasClaimedFreeProject(true);
+    await executeProjectCreation(false); // Free project
+  };
+
+  const executeProjectCreation = async (isPremium: boolean) => {
     setSetupLoading(true);
     setSetupError(null);
 
@@ -140,6 +200,7 @@ function WorkspaceContent() {
         faculty: "General",
         progress: 10,
         freeEditsUsed: 0, 
+        isPremium: isPremium, // Assign premium status if they paid the 54k
         content: {},
         userId: auth.currentUser?.uid || "anonymous", 
         createdAt: new Date().toISOString(),
@@ -224,13 +285,13 @@ function WorkspaceContent() {
     const isPrelim = chapterKey.toLowerCase().includes("preliminary");
     const isChapter1 = chapterKey.toLowerCase().includes("chapter1");
 
-    // Bypass payment for Free Tier (Chapter 1 will get watermarked via the API)
-    if (isPrelim || isChapter1) {
-      executeSingleDownload(chapterKey, isChapter1); 
+    // Bypass payment for Free Tier components OR if the project is Premium (Paid 54k)
+    if (isPrelim || isChapter1 || project?.isPremium) {
+      executeSingleDownload(chapterKey, !project?.isPremium && isChapter1); // Watermark if not premium
       return;
     }
 
-    // Trigger Payment Popup for locked chapters
+    // Trigger Payment Popup for locked chapters on Free Projects
     const currentLabel = currentStructure.find(c => c.key === chapterKey)?.label || "Chapter";
     
     setPaymentState({
@@ -239,7 +300,7 @@ function WorkspaceContent() {
       description: `Unlock ${currentLabel} Download`,
       onSuccess: () => {
         setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
-        executeSingleDownload(chapterKey, false); // Not watermarked since they paid
+        executeSingleDownload(chapterKey, false);
       }
     });
   };
@@ -272,6 +333,12 @@ function WorkspaceContent() {
   const handleDownloadFullDocument = () => {
     if (!projectId) return;
     
+    // Bypass if Project is Premium
+    if (project?.isPremium) {
+      executeFullDownload();
+      return;
+    }
+
     setPaymentState({
       isActive: true,
       amount: 50000,
@@ -307,7 +374,8 @@ function WorkspaceContent() {
   };
 
   const editsUsed = project?.freeEditsUsed || 0;
-  const editsRemaining = Math.max(2 - editsUsed, 0);
+  // If Premium, give them 10 free edits (or unlimited if you adjust), otherwise standard 2
+  const editsRemaining = project?.isPremium ? 10 - editsUsed : Math.max(2 - editsUsed, 0);
 
   const handleApplyCorrection = () => {
     if (editsRemaining > 0) {
@@ -383,9 +451,22 @@ function WorkspaceContent() {
     );
   }
 
+  // --- PROJECT CREATION VIEW ---
   if (!projectId) {
     return (
-      <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
+        
+        {paymentState.isActive && (
+          <PaymentModal
+            amount={paymentState.amount}
+            description={paymentState.description}
+            onSuccess={paymentState.onSuccess}
+            onCancel={() => setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} })}
+          />
+        )}
+
+        {showVerificationGate && <SmsVerificationGate onSuccess={handleVerificationSuccess} />}
+
         <div className="mb-8">
           <Link href="/" className="text-sm font-bold text-gray-500 hover:text-black mb-4 inline-block transition-colors">&larr; Back to Home</Link>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">Get Started</h1>
@@ -394,7 +475,7 @@ function WorkspaceContent() {
 
         {setupError && <div className="mb-6 border-l-4 border-red-500 bg-red-50 p-4 text-red-700 text-sm font-bold shadow-sm rounded-r-lg">⚠️ {setupError}</div>}
 
-        <form onSubmit={handleCreateProject} className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-gray-100 flex flex-col gap-6">
+        <form onSubmit={handleInitiateProjectCreation} className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-gray-100 flex flex-col gap-6">
           <div>
             <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Approved Topic</label>
             <textarea
@@ -416,14 +497,15 @@ function WorkspaceContent() {
               onChange={(e) => setCourse(e.target.value)}
             />
           </div>
-          <button type="submit" disabled={setupLoading || !customTopic.trim()} className="mt-2 bg-black text-white font-bold py-4 rounded-xl hover:bg-gray-800 disabled:bg-gray-300 text-sm uppercase tracking-widest shadow-md">
-            {setupLoading ? "Provisioning Database..." : "Initialize Workspace \u2192"}
+          <button type="submit" disabled={setupLoading || !customTopic.trim()} className="mt-2 bg-black text-white font-bold py-4 rounded-xl hover:bg-gray-800 disabled:bg-gray-300 text-sm uppercase tracking-widest shadow-md flex justify-center items-center gap-2">
+            {setupLoading ? "Provisioning Database..." : hasClaimedFreeProject ? "Unlock New Premium Project (54,000 UGX)" : "Initialize Free Workspace \u2192"}
           </button>
         </form>
       </div>
     );
   }
 
+  // --- ACTIVE WORKSPACE VIEW ---
   if (!project) return <div className="p-8 font-mono text-sm text-center mt-10">Project data corrupted. Please create a new project.</div>;
 
   return (
@@ -458,10 +540,13 @@ function WorkspaceContent() {
       )}
 
       <div className="mb-10">
-        <div className="text-center mb-4">
+        <div className="flex items-center gap-2 mb-4">
           <span className="text-xs font-mono uppercase text-[#d97706] tracking-widest font-bold">
             {project.course || "Research"} Workspace
           </span>
+          {project.isPremium && (
+             <span className="bg-[#d97706] text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest shadow-sm">Premium Unlocked</span>
+          )}
         </div>
         <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900 leading-snug text-left">
           {project.topic}
@@ -513,6 +598,8 @@ function WorkspaceContent() {
           const hasTrafficError = failedChapterKey === chapter.key && trafficErrorLevel > 0;
           
           const isFreeDownload = chapter.key.toLowerCase().includes("preliminary") || chapter.key.toLowerCase().includes("chapter1");
+          // If the project is premium, ALL downloads are "free" (already paid for)
+          const requiresPaymentToDownload = !project.isPremium && !isFreeDownload;
 
           return (
             <div key={chapter.key} className={`border rounded-2xl overflow-hidden transition-all duration-300 flex flex-col ${bgClass}`}>
@@ -528,7 +615,7 @@ function WorkspaceContent() {
                     {((isGuidelinesStep && isGuidelinesUploaded) || (isGenerated && !isGuidelinesStep)) && (
                       <span className="bg-green-200 text-green-800 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest">DONE</span>
                     )}
-                    {isFreeDownload && !isGuidelinesStep && (
+                    {!project.isPremium && isFreeDownload && !isGuidelinesStep && (
                       <span className="bg-blue-100 text-blue-700 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest">FREE TIER</span>
                     )}
                     {isLocked && (
@@ -559,10 +646,10 @@ function WorkspaceContent() {
                       </button>
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleDownloadSingle(chapter.key); }}
-                        className={`${isFreeDownload ? 'bg-[#d97706] hover:bg-[#b45309]' : 'bg-black hover:bg-gray-800'} text-white px-4 py-2.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors shadow-sm flex items-center gap-1`}
+                        className={`${!requiresPaymentToDownload ? 'bg-[#d97706] hover:bg-[#b45309]' : 'bg-black hover:bg-gray-800'} text-white px-4 py-2.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors shadow-sm flex items-center gap-1`}
                       >
-                        {!isFreeDownload && <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>}
-                        {isFreeDownload ? "Download Free" : "Unlock (10k)"}
+                        {requiresPaymentToDownload && <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>}
+                        {!requiresPaymentToDownload ? "Download" : "Unlock (10k)"}
                       </button>
                     </div>
                   ) : (
@@ -647,7 +734,7 @@ function WorkspaceContent() {
             disabled={generatedChapters.length === 0}
             className="bg-black text-white font-extrabold px-8 py-4 rounded-xl uppercase tracking-widest hover:bg-gray-800 transition-colors shadow-lg hover:-translate-y-1 disabled:opacity-50 disabled:hover:-translate-y-0 disabled:cursor-not-allowed"
           >
-            Download (50,000 UGX)
+            {project.isPremium ? "Download Premium (Free)" : "Download (50,000 UGX)"}
           </button>
         </div>
       </div>
