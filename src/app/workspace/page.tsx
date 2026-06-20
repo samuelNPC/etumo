@@ -22,7 +22,7 @@ interface ProjectData {
   faculty: string;
   progress: number;
   freeEditsUsed?: number; 
-  isPremium?: boolean; // Added to flag fully unlocked projects
+  isPremium?: boolean; // Flags fully unlocked projects
   guidelines?: {
     isCustomized: boolean;
     formattingRules: string;
@@ -80,8 +80,9 @@ function WorkspaceContent() {
   const [feedbackText, setFeedbackText] = useState<string>("");
   const [applyingCorrection, setApplyingCorrection] = useState<boolean>(false);
 
-  // Security & Entitlement States
-  const [isVerified, setIsVerified] = useState<boolean>(true);
+  // Security & Entitlement States (Fail-Closed Default)
+  const [isVerified, setIsVerified] = useState<boolean>(false); 
+  const [authCheckLoading, setAuthCheckLoading] = useState<boolean>(true); 
   const [showVerificationGate, setShowVerificationGate] = useState(false);
   const [hasClaimedFreeProject, setHasClaimedFreeProject] = useState(false);
 
@@ -97,24 +98,33 @@ function WorkspaceContent() {
     onSuccess: () => {},
   });
 
-  // Verify Entitlement on Load
+  // Verify Entitlement on Load (Fail Closed)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          if (!userData.phoneVerified) setIsVerified(false);
-          if (userData.freeProjectClaimed) setHasClaimedFreeProject(true);
-        } else {
-          setIsVerified(false);
+        try {
+          const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setIsVerified(!!userData.phoneVerified);
+            setHasClaimedFreeProject(!!userData.freeProjectClaimed);
+          } else {
+            setIsVerified(false);
+            setHasClaimedFreeProject(false);
+          }
+        } catch (error) {
+          console.error("Database access error, locking workspace:", error);
+          setIsVerified(false); 
         }
+      } else {
+        setIsVerified(false);
       }
+      setAuthCheckLoading(false); // Check complete, unlock the UI button
     });
     return () => unsubscribe();
   }, []);
 
-  // Fetch Project
+  // Fetch Project if ID exists
   useEffect(() => {
     if (!projectId) {
       setLoading(false);
@@ -153,7 +163,7 @@ function WorkspaceContent() {
     if (docSnap.exists()) setProject(docSnap.data() as ProjectData);
   };
 
-  // NEW PROJECT CREATION LOGIC WITH SECURITY GATE
+  // PROJECT CREATION LOGIC WITH SECURITY GATE
   const handleInitiateProjectCreation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customTopic.trim()) return;
@@ -178,7 +188,7 @@ function WorkspaceContent() {
       return;
     }
 
-    // SCENARIO 3: User is verified and hasn't claimed yet
+    // SCENARIO 3: User is verified and hasn't claimed yet (Edge case safety)
     executeProjectCreation(false);
   };
 
@@ -374,7 +384,7 @@ function WorkspaceContent() {
   };
 
   const editsUsed = project?.freeEditsUsed || 0;
-  // If Premium, give them 10 free edits (or unlimited if you adjust), otherwise standard 2
+  // If Premium, give them 10 free edits (or unlimited), otherwise standard 2
   const editsRemaining = project?.isPremium ? 10 - editsUsed : Math.max(2 - editsUsed, 0);
 
   const handleApplyCorrection = () => {
@@ -497,8 +507,16 @@ function WorkspaceContent() {
               onChange={(e) => setCourse(e.target.value)}
             />
           </div>
-          <button type="submit" disabled={setupLoading || !customTopic.trim()} className="mt-2 bg-black text-white font-bold py-4 rounded-xl hover:bg-gray-800 disabled:bg-gray-300 text-sm uppercase tracking-widest shadow-md flex justify-center items-center gap-2">
-            {setupLoading ? "Provisioning Database..." : hasClaimedFreeProject ? "Unlock New Premium Project (54,000 UGX)" : "Initialize Free Workspace \u2192"}
+          <button 
+            type="submit" 
+            disabled={setupLoading || authCheckLoading || !customTopic.trim()} 
+            className="mt-2 bg-black text-white font-bold py-4 rounded-xl hover:bg-gray-800 disabled:bg-gray-300 text-sm uppercase tracking-widest shadow-md flex justify-center items-center gap-2 transition-colors"
+          >
+            {setupLoading || authCheckLoading 
+              ? "Verifying Status..." 
+              : hasClaimedFreeProject 
+                ? "Unlock Premium Project (54k UGX)" 
+                : "Initialize Free Workspace \u2192"}
           </button>
         </form>
       </div>
