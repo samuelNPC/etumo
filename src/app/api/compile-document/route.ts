@@ -423,7 +423,7 @@ export async function POST(req: Request) {
     }
 
     const document = new docx.Document({
-      creator: "Etumo Engine",
+      creator: "Etomu Engine",
       title: rawTitle || "Research Document",
       sections: docSections,
     });
