@@ -17,13 +17,13 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
       const cleanDesc = rawText.replace(/#/g, '').replace(/\n/g, ' ').substring(0, 150).trim() + "...";
 
       return {
-        title: "Academic Research Questionnaire | Etumo",
+        title: "Academic Research Questionnaire | Etomu",
         description: cleanDesc,
         openGraph: {
           title: "Academic Research Data Collection",
           description: cleanDesc,
-          url: `https://etumo.com/collect/${params.id}`,
-          siteName: "Etumo",
+          url: `https://etomu.com/collect/${params.id}`,
+          siteName: "Etomu",
           type: "website",
         },
         twitter: {
