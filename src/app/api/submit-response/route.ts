@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, doc, getDoc } from "firebase/firestore";
 
 export async function POST(req: Request) {
   try {
@@ -11,7 +11,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Incomplete submission data." }, { status: 400 });
     }
 
-    // Save the response to the database, linked to the specific instrument
+    // 🚨 1. FETCH INSTRUMENT TO CHECK DEADLINE
+    const instrumentRef = doc(db, "instruments", instrumentId);
+    const instrumentSnap = await getDoc(instrumentRef);
+
+    if (!instrumentSnap.exists()) {
+      return NextResponse.json({ error: "Instrument not found" }, { status: 404 });
+    }
+
+    const instrumentData = instrumentSnap.data();
+
+    // 🚨 2. SERVER-SIDE DEADLINE GUARD
+    if (instrumentData.deadline && new Date() > new Date(instrumentData.deadline)) {
+      return NextResponse.json({ error: "The deadline for this survey has passed." }, { status: 403 });
+    }
+
+    // 🚨 3. SAVE TO DATABASE
     const responseRef = await addDoc(collection(db, "responses"), {
       instrumentId,
       answers,
