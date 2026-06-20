@@ -165,7 +165,7 @@ export default function DataCollectorPage() {
             Research Instrument <br /> Digitization
           </h1>
           <p className="text-gray-500 mt-3 text-sm sm:text-base leading-relaxed">
-            Stop printing paper questionnaires. Upload your approved document, and the Etumo Engine will convert it into a digital collection link.
+            Stop printing paper questionnaires. Upload your approved document, and the Etomu Engine will convert it into a digital collection link.
           </p>
         </div>
 
