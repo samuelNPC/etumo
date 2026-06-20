@@ -129,7 +129,7 @@ export default function PublicCollectionPage({ params }: { params: { id: string 
           <p className="text-sm text-gray-500 font-medium mb-6 leading-relaxed">
             Thank you for participating. Your response has been securely transmitted to the researcher's database.
           </p>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Powered by Etumo</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Powered by Etomu</p>
         </div>
       </div>
     );
