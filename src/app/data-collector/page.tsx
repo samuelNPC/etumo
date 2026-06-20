@@ -131,7 +131,7 @@ export default function DataCollectorPage() {
     });
   };
 
-  const finalLink = `etumo.com/collect/${analysisData?.instrumentId || "demo"}`;
+  const finalLink = `etomu.com/collect/${analysisData?.instrumentId || "demo"}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(`https://${finalLink}`);
@@ -210,7 +210,7 @@ export default function DataCollectorPage() {
               disabled={!selectedFile || step === "analyzing"}
               className="w-full bg-black text-white font-bold py-4 rounded-xl uppercase text-sm tracking-widest hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all shadow-md"
             >
-              {step === "analyzing" ? "Processing via Etumo Engine..." : "Analyze Document"}
+              {step === "analyzing" ? "Processing via Etomu Engine..." : "Analyze Document"}
             </button>
           </div>
         )}
