@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { db, auth } from "@/lib/firebase";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import Link from "next/link";
 
-// 🚨 REPLACE THIS WITH YOUR EXACT GOOGLE ACCOUNT EMAIL
-const ADMIN_EMAIL = "your.email@gmail.com"; 
+// Dynamically pull the admin email from Vercel/Local Environment
+const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
 
 interface DashboardStats {
   totalUsers: number;
@@ -32,9 +32,16 @@ export default function HiddenAdminDashboard() {
     smsSpent: 0,
   });
 
-  // 1. SECURITY LOCK: Verify Admin Identity
+  // 1. SECURITY LOCK: Verify Admin Identity against Environment Variable
   useEffect(() => {
+    if (!ADMIN_EMAIL) {
+      console.error("CRITICAL: NEXT_PUBLIC_ADMIN_EMAIL is not set in Vercel.");
+      router.replace("/");
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      // Strictly compare the logged-in Firebase user's email to your Vercel variable
       if (user && user.email === ADMIN_EMAIL) {
         setIsAuthorized(true);
         fetchDashboardData();
