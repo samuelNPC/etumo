@@ -448,7 +448,7 @@ function WorkspaceContent() {
             </div>
             <h3 className="text-xl font-black text-gray-900 mb-2">Section Locked</h3>
             <p className="text-sm text-gray-600 mb-8 leading-relaxed">
-              You must generate the previous sections sequentially to unlock this chapter. The Etumo Engine requires earlier context to maintain academic flow.
+              You must generate the previous sections sequentially to unlock this chapter. The Etomu Engine requires earlier context to maintain academic flow.
             </p>
             <button onClick={() => setLockedPopup(false)} className="w-full bg-black text-white font-bold py-3.5 rounded-xl uppercase tracking-widest text-xs hover:bg-gray-800 transition-colors shadow-md">
               I Understand
