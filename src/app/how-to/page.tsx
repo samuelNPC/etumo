@@ -11,7 +11,7 @@ export default function HowToPage() {
     {
       number: "01",
       title: "Initialize & Teach the AI",
-      description: "Enter your approved research topic to create a Workspace. The very first step is uploading your university's research manual (PDF). The Etumo Engine will instantly extract your faculty's exact formatting rules, chapter structure, and required preliminary pages.",
+      description: "Enter your approved research topic to create a Workspace. The very first step is uploading your university's research manual (PDF). The Etomu Engine will instantly extract your faculty's exact formatting rules, chapter structure, and required preliminary pages.",
       color: "text-[#4285F4]",
       bgColor: "bg-blue-50"
     },
