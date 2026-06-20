@@ -8,6 +8,9 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { projectId, chapterKey, isFullDocument, structure, rawText, rawTitle, isWatermarked } = body;
 
+    // We will establish the true premium status later in the DB check
+    let applyWatermark = isWatermarked === true; 
+
     const parseInlineText = (text: string, forceBold: boolean = false): docx.TextRun[] => {
       const runs: docx.TextRun[] = [];
       let currentIdx = 0;
@@ -41,7 +44,6 @@ export async function POST(req: Request) {
     ];
 
     const processTextToElements = (rawString: string) => {
-      // 🚨 AGGRESSIVE SANITIZER: Clean HTML but DO NOT mangle valid text
       let cleanContent = rawString
         .replace(/&nbsp;/gi, ' ') 
         .replace(/<br\s*\/?>/gi, '\n')
@@ -61,12 +63,10 @@ export async function POST(req: Request) {
       let tableRowsData: string[][] = [];
       let consecutiveEmptyLines = 0;
       
-      // 🚨 NEW TOC STATE MACHINE
       let inTOC = false;
       let pendingTocText = "";
 
       const createTocRow = (leftText: string, pageNumber: string) => {
-        // Automatically bold Chapter titles in the TOC
         const isChapter = leftText.toUpperCase().includes("CHAPTER");
         return new docx.Paragraph({
           children: [
@@ -114,17 +114,14 @@ export async function POST(req: Request) {
 
         if (cleanLineToMatch === "PRELIMINARY PAGES" || cleanLineToMatch === "APPENDICES") continue;
 
-        // Ensure TOC chapter references (which end in numbers) don't trigger massive page breaks
         const isChapterHeading = cleanLineToMatch.startsWith("CHAPTER ") && cleanLineToMatch.length < 60 && !/ [0-9IVXLC]+$/.test(cleanLineToMatch);
         const isTrigger = pageBreakTriggers.includes(cleanLineToMatch);
 
-        // Turn OFF TOC Mode if we hit a new section
         if (inTOC && (isTrigger || isChapterHeading) && !["TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES"].includes(cleanLineToMatch)) {
             inTOC = false;
             pendingTocText = ""; 
         }
 
-        // 1. PAGE BREAK TRIGGERS
         if (isTrigger || isChapterHeading) {
           if (inTable) flushTable();
           consecutiveEmptyLines = 0;
@@ -132,7 +129,6 @@ export async function POST(req: Request) {
             elements.push(new docx.Paragraph({ text: "", pageBreakBefore: true }));
           }
           
-          // Turn ON TOC Mode
           if (["TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES"].includes(cleanLineToMatch)) {
               inTOC = true;
           }
@@ -148,15 +144,12 @@ export async function POST(req: Request) {
           continue;
         }
 
-        // 2. TOC PROCESSING (State Machine)
         if (inTOC) {
-          // Remove rogue markdown pipes the AI might insert
           let tocTrimmed = trimmed.replace(/\|/g, '').trim(); 
           if (tocTrimmed === "") continue;
-          if (/^[\.\-\_]+$/.test(tocTrimmed)) continue; // ignore rows of just dots
-          if (tocTrimmed.match(/^[:\-\s]+$/)) continue; // ignore markdown table separators like ---|---
+          if (/^[\.\-\_]+$/.test(tocTrimmed)) continue; 
+          if (tocTrimmed.match(/^[:\-\s]+$/)) continue; 
 
-          // If the line is ONLY a number, glue it to the pending text
           if (/^[0-9ivxlc]+$/i.test(tocTrimmed)) {
               if (pendingTocText) {
                   elements.push(createTocRow(pendingTocText, tocTrimmed));
@@ -165,7 +158,6 @@ export async function POST(req: Request) {
               continue;
           }
 
-          // If the line has text on the left and a number on the right (e.g. "2.0 Intro ... 9")
           const tocInlineMatch = tocTrimmed.match(/^(.*?)(?:\.{2,}|\s+)([0-9ivxlc]+)$/i);
           if (tocInlineMatch) {
              let left = tocInlineMatch[1].trim();
@@ -177,7 +169,6 @@ export async function POST(req: Request) {
              }
           }
 
-          // Otherwise, hold the text and wait for the number on the next line
           if (pendingTocText) {
               pendingTocText += " " + tocTrimmed;
           } else {
@@ -186,7 +177,6 @@ export async function POST(req: Request) {
           continue;
         }
 
-        // 3. NORMAL TABLES
         if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
           inTable = true;
           consecutiveEmptyLines = 0;
@@ -198,7 +188,6 @@ export async function POST(req: Request) {
           flushTable();
         }
 
-        // 4. EMPTY LINES
         if (trimmed === "") {
           consecutiveEmptyLines++;
           if (consecutiveEmptyLines <= 2) {
@@ -208,7 +197,6 @@ export async function POST(req: Request) {
         }
         consecutiveEmptyLines = 0;
 
-        // 5. DIAGRAM PLACEHOLDERS
         if (trimmed.includes("[INSERT CONCEPTUAL FRAMEWORK DIAGRAM HERE]")) {
            elements.push(
             new docx.Paragraph({
@@ -222,7 +210,6 @@ export async function POST(req: Request) {
           continue;
         }
 
-        // 6. GENERIC MARKDOWN HEADINGS
         const headerMatch = trimmed.match(/^(#{1,6})\s+(.*)/);
         if (headerMatch) {
           const level = headerMatch[1].length;
@@ -247,17 +234,15 @@ export async function POST(req: Request) {
           continue;
         }
 
-        // 7. CENTERED BRACKETS (e.g. [UNIVERSITY NAME])
         if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
           elements.push(new docx.Paragraph({
-            children: parseInlineText(trimmed, true), // Force bold
+            children: parseInlineText(trimmed, true), 
             alignment: docx.AlignmentType.CENTER,
             spacing: { after: 200 }
           }));
           continue;
         }
 
-        // 8. PARAGRAPHS & BULLETS
         const isBullet = /^[\*\-]\s+(.*)/.exec(trimmed);
         let contentText = trimmed;
         let bulletInfo = undefined;
@@ -285,8 +270,11 @@ export async function POST(req: Request) {
       return elements;
     };
 
+    // --- WATERMARK & FOOTER ENGINE ---
     const createHeader = () => {
-      if (!isWatermarked) return undefined;
+      // Clean document for paid users
+      if (!applyWatermark) return undefined; 
+      
       return new docx.Header({
         children: [
           new docx.Paragraph({
@@ -294,7 +282,7 @@ export async function POST(req: Request) {
             children: [
               new docx.TextRun({ 
                 text: "⚠️ ETOMU.COM FREE EVALUATION COPY ⚠️", 
-                color: "D97706", 
+                color: "D97706", // Amber branding
                 bold: true, 
                 size: 22, 
                 font: "Arial" 
@@ -310,7 +298,7 @@ export async function POST(req: Request) {
         new docx.Paragraph({
           alignment: docx.AlignmentType.CENTER,
           children: [
-            ...(isWatermarked ? [
+            ...(applyWatermark ? [
               new docx.TextRun({ 
                 text: "ETOMU.COM FREE EVALUATION COPY - ", 
                 color: "D97706", 
@@ -359,12 +347,21 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
       }
 
+      // SECURITY DB CHECK: Verify Premium Status directly from Firestore
       const docRef = doc(db, "projects", projectId);
       const docSnap = await getDoc(docRef);
 
       if (!docSnap.exists()) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
       const contentData = docSnap.data().content || {};
+      const isPremium = docSnap.data().isPremium === true;
+
+      // Force watermark on Free Tier regardless of what the client payload requested
+      if (!isPremium) {
+        applyWatermark = true;
+      } else {
+        applyWatermark = false; // Force clean output for Premium
+      }
 
       if (isFullDocument) {
         structure.forEach((chapter: any) => {
