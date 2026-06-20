@@ -52,7 +52,7 @@ export default function Home() {
             Where research gets done.
           </h1>
           <p className="text-base sm:text-lg md:text-xl text-gray-700 mb-8 max-w-2xl font-medium leading-relaxed">
-            An AI-powered workspace that helps students and writers move from idea to submission-ready documents faster.
+            An AI-powered workspace that helps students and writers move from idea to submission-ready research reports faster.
           </p>
 
           {/* Social Proof / Trust Banner */}
