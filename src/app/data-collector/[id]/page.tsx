@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { doc, getDoc, collection, query, where, getDocs, orderBy } from "firebase/firestore";
+import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 
 interface InstrumentData {
   userId: string;
@@ -31,6 +31,7 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "responses">("overview");
+  const [isExporting, setIsExporting] = useState(false);
 
   // Authenticate user
   useEffect(() => {
@@ -100,38 +101,47 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
     fetchData();
   }, [user, params.id]);
 
-  const handleExportCSV = () => {
+  // 🚨 NEW EXCEL EXPORT LOGIC
+  const handleExportExcel = async () => {
     if (!instrument || responses.length === 0) return;
+    setIsExporting(true);
 
-    // Build CSV Headers (Respondent ID, Date, Q1, Q2, etc.)
-    const headers = ["Respondent ID", "Date Submitted"];
-    for (let i = 1; i <= instrument.questionCount; i++) {
-      headers.push(`Question ${i}`);
-    }
-
-    // Build Rows
-    const rows = responses.map((r, index) => {
-      const rowData = [
-        `Respondent_${responses.length - index}`,
-        new Date(r.submittedAt).toLocaleDateString()
-      ];
+    try {
+      // 1. Build Headers
+      const headers = ["Respondent ID", "Date Submitted"];
       for (let i = 1; i <= instrument.questionCount; i++) {
-        // Escape quotes and wrap in quotes to handle commas in text
-        const answerText = r.answers[i] ? r.answers[i].replace(/"/g, '""') : "";
-        rowData.push(`"${answerText}"`);
+        headers.push(`Question ${i}`);
       }
-      return rowData.join(",");
-    });
 
-    const csvContent = [headers.join(","), ...rows].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `Etumo_Data_${params.id}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+      // 2. Build Data Rows
+      const data = [headers];
+      responses.forEach((r, index) => {
+        const rowData = [
+          `Respondent_${responses.length - index}`,
+          new Date(r.submittedAt).toLocaleDateString()
+        ];
+        for (let i = 1; i <= instrument.questionCount; i++) {
+          rowData.push(r.answers[i] || ""); // No need to worry about commas or escaping in Excel!
+        }
+        data.push(rowData);
+      });
+
+      // 3. Dynamically import xlsx (keeps initial page load fast)
+      const XLSX = await import("xlsx");
+      
+      // 4. Create Workbook and Worksheet
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Survey Responses");
+
+      // 5. Trigger native Excel download
+      XLSX.writeFile(wb, `Etomu_Data_${params.id}.xlsx`);
+    } catch (err) {
+      alert("Failed to export Excel file.");
+      console.error(err);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (loading) {
@@ -174,7 +184,7 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
           <div className="flex gap-3 w-full sm:w-auto">
             <button 
               onClick={() => {
-                navigator.clipboard.writeText(`https://etumo.com/collect/${params.id}`);
+                navigator.clipboard.writeText(`https://etomu.com/collect/${params.id}`);
                 alert("Collection link copied to clipboard!");
               }}
               className="flex-1 sm:flex-none bg-white border border-gray-300 text-gray-800 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-gray-50 transition-colors shadow-sm"
@@ -182,11 +192,18 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
               Copy Link
             </button>
             <button 
-              onClick={handleExportCSV}
-              disabled={responses.length === 0}
-              className="flex-1 sm:flex-none bg-[#d97706] text-white px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-[#b45309] disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors shadow-sm"
+              onClick={handleExportExcel}
+              disabled={responses.length === 0 || isExporting}
+              className="flex-1 sm:flex-none bg-[#d97706] text-white px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-[#b45309] disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors shadow-sm flex items-center justify-center gap-2"
             >
-              Export to CSV &darr;
+              {isExporting ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Exporting...
+                </>
+              ) : (
+                "Export Excel \u2193"
+              )}
             </button>
           </div>
         </div>
