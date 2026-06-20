@@ -3,45 +3,45 @@ import { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "How to Use Etomu | Step-by-Step Guide",
-  description: "Learn how to navigate the Etomu Workspace, bypass Turnitin in the Originality Center, and digitize your field research with the Data Collector.",
+  description: "Learn how to claim your free research workspace via SMS, navigate the drafting engine, and unlock clean premium documents for submission.",
 };
 
 export default function HowToPage() {
   const steps = [
     {
       number: "01",
-      title: "Initialize & Teach the AI",
-      description: "Enter your approved research topic to create a Workspace. The very first step is uploading your university's research manual (PDF). The Etomu Engine will instantly extract your faculty's exact formatting rules, chapter structure, and required preliminary pages.",
+      title: "Claim Free Workspace via SMS",
+      description: "Enter your MTN or Airtel number to verify your identity via a 6-digit SMS code. Every student gets one completely free research project. Once in, upload your university's research manual so the AI can extract your exact faculty formatting rules.",
       color: "text-[#4285F4]",
       bgColor: "bg-blue-50"
     },
     {
       number: "02",
       title: "Sequential Drafting & Edits",
-      description: "Generate your chapters sequentially. You must finish Chapter 1 before unlocking Chapter 2 so the AI maintains perfect academic context. If your supervisor requests changes, paste their comments into the previewer. The first 2 AI rewrites are free (subsequent edits are 5,000 UGX).",
+      description: "Generate your chapters sequentially (Chapter 1 must be finished before Chapter 2 unlocks). If your supervisor requests changes, paste their comments into the previewer. You get 10 free AI rewriting sessions per project. Need more? Unlock a bundle of 20 extra edits for just 13,000 UGX.",
       color: "text-[#EA4335]",
       bgColor: "bg-red-50"
     },
     {
       number: "03",
+      title: "Export: Free vs. Premium",
+      description: "Download your completed project at any time. Free workspaces export fully formatted DOCX files containing Etomu evaluation watermarks. Ready for your final university submission? Unlock a Premium Workspace for a flat 54,000 UGX to export perfectly clean, un-watermarked documents.",
+      color: "text-[#9333EA]",
+      bgColor: "bg-purple-50"
+    },
+    {
+      number: "04",
       title: "Bypass Turnitin (Originality Center)",
-      description: "If your work gets flagged, head to the Originality Center. You get 30 free daily text snippet rewrites. For heavy flags, upload your raw Turnitin PDF—our engine maps your exact scores and rewrites the entire document to drop AI and Plagiarism metrics to zero (15,000 UGX).",
+      description: "If your work gets flagged by the university, head to the Originality Center. You get free daily text snippet rewrites. For heavy flags, upload your raw Turnitin PDF—our engine maps your exact scores and rewrites the entire document to drop AI and Plagiarism metrics to zero (15,000 UGX).",
       color: "text-[#FBBC05]",
       bgColor: "bg-yellow-50"
     },
     {
-      number: "04",
+      number: "05",
       title: "Digitize Fieldwork (Data Collector)",
-      description: "Stop printing paper questionnaires. Upload your approved instrument PDF, and Etomu will map the variables and deploy a mobile-friendly public link for your respondents (10,000 UGX). Watch the data roll into your private dashboard in real-time.",
+      description: "Stop printing paper questionnaires. Upload your approved instrument PDF, and Etomu will map the variables and deploy a mobile-friendly public link for your respondents (10,000 UGX). Watch the data roll into your private dashboard and auto-summarize your Chapter 4!",
       color: "text-[#34A853]",
       bgColor: "bg-green-50"
-    },
-    {
-      number: "05",
-      title: "Export & Auto-Summarize",
-      description: "When you're ready to submit, securely unlock your files via MTN or Airtel Mobile Money. Download individual chapters (10,000 UGX) or the fully compiled Research Document (50,000 UGX). You can even use the Data Collector to auto-write your Chapter 4 summary based on respondent trends!",
-      color: "text-[#9333EA]",
-      bgColor: "bg-purple-50"
     }
   ];
 
@@ -53,8 +53,8 @@ export default function HowToPage() {
         <h1 className="text-3xl sm:text-5xl font-black text-gray-900 tracking-tighter mb-4">
           How Etomu Works
         </h1>
-        <p className="text-gray-500 font-medium max-w-lg mx-auto">
-          From a blank idea to a submission-ready research document in 5 simple steps.
+        <p className="text-gray-500 font-medium max-w-lg mx-auto leading-relaxed">
+          From an SMS verification to a clean, submission-ready research document in 5 simple steps.
         </p>
       </div>
 
@@ -81,9 +81,9 @@ export default function HowToPage() {
 
         {/* CTA */}
         <div className="mt-16 text-center bg-black rounded-3xl p-10 shadow-xl">
-          <h2 className="text-2xl font-bold text-white mb-4 tracking-tight">Ready to start researching?</h2>
-          <Link href="/" className="inline-block bg-white text-black font-bold py-4 px-8 rounded-xl uppercase tracking-widest text-sm hover:bg-gray-100 transition-colors shadow-md">
-            Create Your Workspace
+          <h2 className="text-2xl font-bold text-white mb-4 tracking-tight">Ready to claim your free project?</h2>
+          <Link href="/workspace" className="inline-block bg-white text-black font-bold py-4 px-8 rounded-xl uppercase tracking-widest text-sm hover:bg-gray-100 transition-colors shadow-md">
+            Enter The Workspace
           </Link>
         </div>
       </div>
