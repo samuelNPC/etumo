@@ -32,7 +32,7 @@ export default function HowToPage() {
     {
       number: "04",
       title: "Digitize Fieldwork (Data Collector)",
-      description: "Stop printing paper questionnaires. Upload your approved instrument PDF, and Etumo will map the variables and deploy a mobile-friendly public link for your respondents (10,000 UGX). Watch the data roll into your private dashboard in real-time.",
+      description: "Stop printing paper questionnaires. Upload your approved instrument PDF, and Etomu will map the variables and deploy a mobile-friendly public link for your respondents (10,000 UGX). Watch the data roll into your private dashboard in real-time.",
       color: "text-[#34A853]",
       bgColor: "bg-green-50"
     },
