@@ -2,7 +2,7 @@ import OriginalityCenter from "@/components/OriginalityCenter";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Originality Center | Etumo",
+  title: "Originality Center | Etomu",
   description: "Upload flagged documents to isolate and rewrite problematic text structures.",
 };
 
