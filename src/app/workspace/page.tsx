@@ -21,8 +21,9 @@ interface ProjectData {
   course: string;
   faculty: string;
   progress: number;
-  freeEditsUsed?: number; 
-  isPremium?: boolean; // Flags fully unlocked projects
+  isPremium?: boolean; 
+  freeEditsUsed?: number; // Tracks how many times they've hit 'Rewrite'
+  purchasedEditBundles?: number; // Tracks how many 13k packages they bought
   guidelines?: {
     isCustomized: boolean;
     formattingRules: string;
@@ -80,7 +81,7 @@ function WorkspaceContent() {
   const [feedbackText, setFeedbackText] = useState<string>("");
   const [applyingCorrection, setApplyingCorrection] = useState<boolean>(false);
 
-  // Security & Entitlement States (Fail-Closed Default)
+  // Security & Entitlement States
   const [isVerified, setIsVerified] = useState<boolean>(false); 
   const [authCheckLoading, setAuthCheckLoading] = useState<boolean>(true); 
   const [showVerificationGate, setShowVerificationGate] = useState(false);
@@ -98,7 +99,6 @@ function WorkspaceContent() {
     onSuccess: () => {},
   });
 
-  // Verify Entitlement on Load (Fail Closed)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
@@ -113,18 +113,16 @@ function WorkspaceContent() {
             setHasClaimedFreeProject(false);
           }
         } catch (error) {
-          console.error("Database access error, locking workspace:", error);
           setIsVerified(false); 
         }
       } else {
         setIsVerified(false);
       }
-      setAuthCheckLoading(false); // Check complete, unlock the UI button
+      setAuthCheckLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
-  // Fetch Project if ID exists
   useEffect(() => {
     if (!projectId) {
       setLoading(false);
@@ -163,40 +161,41 @@ function WorkspaceContent() {
     if (docSnap.exists()) setProject(docSnap.data() as ProjectData);
   };
 
-  // PROJECT CREATION LOGIC WITH SECURITY GATE
   const handleInitiateProjectCreation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customTopic.trim()) return;
 
-    // SCENARIO 1: First time user, hasn't verified phone. Show SMS Gate.
     if (!isVerified && !hasClaimedFreeProject) {
       setShowVerificationGate(true);
       return;
     }
 
-    // SCENARIO 2: User has already claimed free project. Hit them with paywall for full unlock.
     if (hasClaimedFreeProject) {
-      setPaymentState({
-        isActive: true,
-        amount: 54000,
-        description: "Unlock Additional Premium Research Workspace",
-        onSuccess: () => {
-          setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
-          executeProjectCreation(true); // true = isPremium
-        }
-      });
+      trigger54kPayment();
       return;
     }
 
-    // SCENARIO 3: User is verified and hasn't claimed yet (Edge case safety)
     executeProjectCreation(false);
+  };
+
+  const trigger54kPayment = () => {
+    setShowVerificationGate(false);
+    setPaymentState({
+      isActive: true,
+      amount: 54000,
+      description: "Unlock Premium Research Workspace",
+      onSuccess: () => {
+        setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
+        executeProjectCreation(true); 
+      }
+    });
   };
 
   const handleVerificationSuccess = async () => {
     setShowVerificationGate(false);
     setIsVerified(true);
     setHasClaimedFreeProject(true);
-    await executeProjectCreation(false); // Free project
+    await executeProjectCreation(false); 
   };
 
   const executeProjectCreation = async (isPremium: boolean) => {
@@ -209,8 +208,9 @@ function WorkspaceContent() {
         course: course || "General",
         faculty: "General",
         progress: 10,
-        freeEditsUsed: 0, 
-        isPremium: isPremium, // Assign premium status if they paid the 54k
+        isPremium: isPremium, 
+        freeEditsUsed: 0,
+        purchasedEditBundles: 0,
         content: {},
         userId: auth.currentUser?.uid || "anonymous", 
         createdAt: new Date().toISOString(),
@@ -289,38 +289,13 @@ function WorkspaceContent() {
     }
   };
 
-  const handleDownloadSingle = (chapterKey: string) => {
-    if (!projectId) return;
-
-    const isPrelim = chapterKey.toLowerCase().includes("preliminary");
-    const isChapter1 = chapterKey.toLowerCase().includes("chapter1");
-
-    // Bypass payment for Free Tier components OR if the project is Premium (Paid 54k)
-    if (isPrelim || isChapter1 || project?.isPremium) {
-      executeSingleDownload(chapterKey, !project?.isPremium && isChapter1); // Watermark if not premium
-      return;
-    }
-
-    // Trigger Payment Popup for locked chapters on Free Projects
-    const currentLabel = currentStructure.find(c => c.key === chapterKey)?.label || "Chapter";
-    
-    setPaymentState({
-      isActive: true,
-      amount: 10000,
-      description: `Unlock ${currentLabel} Download`,
-      onSuccess: () => {
-        setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
-        executeSingleDownload(chapterKey, false);
-      }
-    });
-  };
-
-  const executeSingleDownload = async (chapterKey: string, isWatermarked: boolean = false) => {
+  const executeSingleDownload = async (chapterKey: string) => {
     try {
       const res = await fetch("/api/compile-document", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, chapterKey, structure: currentStructure, isWatermarked }),
+        // isPremium dictates whether watermarks are applied directly in your API
+        body: JSON.stringify({ projectId, chapterKey, structure: currentStructure, isPremium: project?.isPremium }), 
       });
 
       if (!res.ok) throw new Error("Export failed");
@@ -330,7 +305,7 @@ function WorkspaceContent() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${currentLabel.replace(/\s+/g, "_")}${isWatermarked ? "_WATERMARKED" : ""}.docx`;
+      a.download = `${currentLabel.replace(/\s+/g, "_")}.docx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -340,32 +315,12 @@ function WorkspaceContent() {
     }
   };
 
-  const handleDownloadFullDocument = () => {
-    if (!projectId) return;
-    
-    // Bypass if Project is Premium
-    if (project?.isPremium) {
-      executeFullDownload();
-      return;
-    }
-
-    setPaymentState({
-      isActive: true,
-      amount: 50000,
-      description: "Unlock Complete Research Document",
-      onSuccess: () => {
-        setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
-        executeFullDownload();
-      }
-    });
-  };
-
   const executeFullDownload = async () => {
     try {
       const res = await fetch("/api/compile-document", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, chapterKey: "full", isFullDocument: true, structure: currentStructure }),
+        body: JSON.stringify({ projectId, chapterKey: "full", isFullDocument: true, structure: currentStructure, isPremium: project?.isPremium }),
       });
 
       if (!res.ok) throw new Error("Full export failed");
@@ -383,23 +338,40 @@ function WorkspaceContent() {
     }
   };
 
+  // --- CORRECTIONS LOGIC ---
   const editsUsed = project?.freeEditsUsed || 0;
-  // If Premium, give them 10 free edits (or unlimited), otherwise standard 2
-  const editsRemaining = project?.isPremium ? 10 - editsUsed : Math.max(2 - editsUsed, 0);
+  const purchasedBundles = project?.purchasedEditBundles || 0;
+  
+  // They get 10 free. Plus 20 more for every 13k bundle they purchase.
+  const totalAllowedEdits = 10 + (purchasedBundles * 20);
+  const editsRemaining = totalAllowedEdits - editsUsed;
 
-  const handleApplyCorrection = () => {
+  const handleApplyCorrectionClick = () => {
     if (editsRemaining > 0) {
-      executeCorrection(); 
+      executeCorrection();
     } else {
       setPaymentState({
         isActive: true,
-        amount: 5000,
-        description: "Unlock Supervisor Correction Rewrite",
-        onSuccess: () => {
-          setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
-          executeCorrection();
-        }
+        amount: 13000,
+        description: "Unlock 20 Additional Supervisor Correction Sessions",
+        onSuccess: handlePurchaseCorrectionBundle
       });
+    }
+  };
+
+  const handlePurchaseCorrectionBundle = async () => {
+    if (!projectId) return;
+    try {
+      const newBundles = purchasedBundles + 1;
+      await setDoc(doc(db, "projects", projectId), {
+        purchasedEditBundles: newBundles
+      }, { merge: true });
+      
+      setProject(prev => prev ? { ...prev, purchasedEditBundles: newBundles } : null);
+      setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
+      // We don't auto-execute here, we let the user click "Apply Corrections" again so they confirm their text
+    } catch (error) {
+      alert("Failed to update database with new corrections package.");
     }
   };
 
@@ -421,7 +393,7 @@ function WorkspaceContent() {
 
         setProject(prev => prev ? { 
           ...prev, 
-          freeEditsUsed: newEditsUsed, 
+          freeEditsUsed: newEditsUsed,
           content: { ...prev.content, [previewChapter]: cleanContent } 
         } : null);
 
@@ -475,7 +447,13 @@ function WorkspaceContent() {
           />
         )}
 
-        {showVerificationGate && <SmsVerificationGate onSuccess={handleVerificationSuccess} />}
+        {showVerificationGate && (
+          <SmsVerificationGate 
+            onSuccess={handleVerificationSuccess} 
+            onRequirePayment={trigger54kPayment}
+            onCancel={() => setShowVerificationGate(false)}
+          />
+        )}
 
         <div className="mb-8">
           <Link href="/" className="text-sm font-bold text-gray-500 hover:text-black mb-4 inline-block transition-colors">&larr; Back to Home</Link>
@@ -515,7 +493,7 @@ function WorkspaceContent() {
             {setupLoading || authCheckLoading 
               ? "Verifying Status..." 
               : hasClaimedFreeProject 
-                ? "Unlock Premium Project (54k UGX)" 
+                ? "Unlock Workspace (54,000 UGX)" 
                 : "Initialize Free Workspace \u2192"}
           </button>
         </form>
@@ -562,9 +540,9 @@ function WorkspaceContent() {
           <span className="text-xs font-mono uppercase text-[#d97706] tracking-widest font-bold">
             {project.course || "Research"} Workspace
           </span>
-          {project.isPremium && (
-             <span className="bg-[#d97706] text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest shadow-sm">Premium Unlocked</span>
-          )}
+          <span className="bg-[#d97706] text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest shadow-sm">
+             {project.isPremium ? "Premium Unlocked" : "Free Project"}
+          </span>
         </div>
         <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900 leading-snug text-left">
           {project.topic}
@@ -614,10 +592,6 @@ function WorkspaceContent() {
 
           const isCurrentlyGenerating = generatingKey === chapter.key;
           const hasTrafficError = failedChapterKey === chapter.key && trafficErrorLevel > 0;
-          
-          const isFreeDownload = chapter.key.toLowerCase().includes("preliminary") || chapter.key.toLowerCase().includes("chapter1");
-          // If the project is premium, ALL downloads are "free" (already paid for)
-          const requiresPaymentToDownload = !project.isPremium && !isFreeDownload;
 
           return (
             <div key={chapter.key} className={`border rounded-2xl overflow-hidden transition-all duration-300 flex flex-col ${bgClass}`}>
@@ -632,9 +606,6 @@ function WorkspaceContent() {
                     </h3>
                     {((isGuidelinesStep && isGuidelinesUploaded) || (isGenerated && !isGuidelinesStep)) && (
                       <span className="bg-green-200 text-green-800 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest">DONE</span>
-                    )}
-                    {!project.isPremium && isFreeDownload && !isGuidelinesStep && (
-                      <span className="bg-blue-100 text-blue-700 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest">FREE TIER</span>
                     )}
                     {isLocked && (
                       <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -663,11 +634,10 @@ function WorkspaceContent() {
                         Preview
                       </button>
                       <button 
-                        onClick={(e) => { e.stopPropagation(); handleDownloadSingle(chapter.key); }}
-                        className={`${!requiresPaymentToDownload ? 'bg-[#d97706] hover:bg-[#b45309]' : 'bg-black hover:bg-gray-800'} text-white px-4 py-2.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors shadow-sm flex items-center gap-1`}
+                        onClick={(e) => { e.stopPropagation(); executeSingleDownload(chapter.key); }}
+                        className="bg-[#d97706] hover:bg-[#b45309] text-white px-4 py-2.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors shadow-sm flex items-center gap-1"
                       >
-                        {requiresPaymentToDownload && <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>}
-                        {!requiresPaymentToDownload ? "Download" : "Unlock (10k)"}
+                        Download
                       </button>
                     </div>
                   ) : (
@@ -694,41 +664,6 @@ function WorkspaceContent() {
                   </span>
                 </div>
               )}
-
-              {hasTrafficError && (
-                <div className="bg-orange-50 border-t border-orange-200 px-6 py-4 flex flex-col items-center justify-center text-center animate-in slide-in-from-top-2 duration-300">
-                  {trafficErrorLevel === 1 && (
-                    <>
-                      <p className="text-orange-800 text-sm font-bold mb-3">
-                        Our System is currently facing high traffic.
-                      </p>
-                      <button 
-                        onClick={() => handleGenerateChapter(chapter.key)}
-                        className="bg-[#d97706] text-white px-6 py-2 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-[#b45309] transition-colors shadow-sm"
-                      >
-                        Retry Generation
-                      </button>
-                    </>
-                  )}
-
-                  {trafficErrorLevel === 2 && (
-                    <>
-                      <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center mb-2">
-                        <span className="text-orange-600 text-lg">⏳</span>
-                      </div>
-                      <p className="text-orange-800 text-sm font-bold mb-3 max-w-sm">
-                        We are still facing high traffic. Please try again after a few seconds.
-                      </p>
-                      <button 
-                        onClick={() => handleGenerateChapter(chapter.key)}
-                        className="text-xs font-bold text-[#d97706] uppercase tracking-widest hover:underline"
-                      >
-                        Try Again Now
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
             </div>
           );
         })}
@@ -748,24 +683,13 @@ function WorkspaceContent() {
             Preview Full Document
           </button>
           <button 
-            onClick={handleDownloadFullDocument}
+            onClick={executeFullDownload}
             disabled={generatedChapters.length === 0}
             className="bg-black text-white font-extrabold px-8 py-4 rounded-xl uppercase tracking-widest hover:bg-gray-800 transition-colors shadow-lg hover:-translate-y-1 disabled:opacity-50 disabled:hover:-translate-y-0 disabled:cursor-not-allowed"
           >
-            {project.isPremium ? "Download Premium (Free)" : "Download (50,000 UGX)"}
+            Download Final DOCX
           </button>
         </div>
-      </div>
-
-      <div className="mt-12 pt-8 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Link href="/originality" className="flex flex-col border border-yellow-300 bg-yellow-50 p-5 rounded-2xl hover:bg-yellow-100 transition-colors">
-          <span className="text-sm font-bold text-yellow-900 uppercase tracking-widest mb-1">Originality Center</span>
-          <span className="text-xs text-yellow-700 leading-relaxed">Remove similarity and AI percentages with ease.</span>
-        </Link>
-        <Link href="/data-collector" className="flex flex-col border border-orange-300 bg-orange-50 p-5 rounded-2xl hover:bg-orange-100 transition-colors">
-          <span className="text-sm font-bold text-[#d97706] uppercase tracking-widest mb-1">Data Collector &rarr;</span>
-          <span className="text-xs text-orange-700 leading-relaxed">Digitize research instruments and collect field responses.</span>
-        </Link>
       </div>
 
       {previewChapter && (previewChapter === "FULL_DOCUMENT" ? fullDocumentContent : project.content[previewChapter]) && (
@@ -773,7 +697,7 @@ function WorkspaceContent() {
 
           <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 bg-gray-50 shrink-0 shadow-sm z-10">
             <button 
-              onClick={() => previewChapter === "FULL_DOCUMENT" ? handleDownloadFullDocument() : handleDownloadSingle(previewChapter)}
+              onClick={() => previewChapter === "FULL_DOCUMENT" ? executeFullDownload() : executeSingleDownload(previewChapter)}
               className="bg-[#d97706] text-white px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-[#b45309] transition-colors shadow-sm"
             >
               Export to DOCX &darr;
@@ -811,9 +735,8 @@ function WorkspaceContent() {
                             <h4 className="font-bold text-sm text-gray-800 uppercase tracking-wider">Submit Supervisor Feedback</h4>
                             <p className="text-xs text-gray-500 mt-1">The AI will rewrite this chapter to reflect the feedback perfectly.</p>
                           </div>
-                          
-                          <span className={`${editsRemaining > 0 ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-orange-50 text-orange-700 border-orange-200"} border text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest`}>
-                            {editsRemaining > 0 ? `${editsRemaining} Free Edits Left` : "5,000 UGX / Edit"}
+                          <span className={`${editsRemaining > 0 ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-red-50 text-red-700 border-red-200"} border text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest`}>
+                            {editsRemaining > 0 ? `${editsRemaining} Corrections Left` : "Limit Reached"}
                           </span>
                         </div>
 
@@ -826,15 +749,17 @@ function WorkspaceContent() {
 
                         <div className="flex flex-col sm:flex-row gap-3 mt-2">
                           <button 
-                            onClick={handleApplyCorrection}
-                            disabled={applyingCorrection || !feedbackText} 
-                            className="flex-1 bg-black text-white px-4 py-3 text-xs font-bold uppercase tracking-widest hover:bg-gray-800 disabled:bg-gray-400 transition-colors rounded-lg shadow-sm"
+                            onClick={handleApplyCorrectionClick}
+                            disabled={applyingCorrection || (editsRemaining > 0 && !feedbackText)} 
+                            className={`flex-1 text-white px-4 py-3 text-xs font-bold uppercase tracking-widest transition-colors rounded-lg shadow-sm ${
+                              editsRemaining > 0 ? "bg-black hover:bg-gray-800 disabled:bg-gray-400" : "bg-[#d97706] hover:bg-[#b45309]"
+                            }`}
                           >
                             {applyingCorrection 
                               ? "Rewriting Chapter..." 
                               : editsRemaining > 0 
-                                ? "Apply Corrections (Free)" 
-                                : "Apply Corrections (5,000 UGX)"}
+                                ? "Apply Corrections" 
+                                : "Unlock 20 More (13,000 UGX)"}
                           </button>
                           <button onClick={() => setShowFeedbackPanel(false)} className="w-full sm:w-auto bg-red-50 text-red-600 border border-red-200 px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-red-100 transition-colors rounded-lg shadow-sm">
                             Cancel
@@ -845,7 +770,6 @@ function WorkspaceContent() {
                   </div>
                 </div>
               )}
-
             </div>
           </div>
         </div>
