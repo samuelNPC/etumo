@@ -42,40 +42,7 @@ export default function Home() {
   };
 
   return (
-    <div className="relative flex-1 w-full bg-blue-50 overflow-hidden font-sans min-h-[85vh]">
-
-      {/* --- ANIMATED BACKGROUND SYSTEM (Light Blue Palette) --- */}
-      <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes blob {
-          0% { transform: translate(0px, 0px) scale(1); }
-          33% { transform: translate(30px, -50px) scale(1.1); }
-          66% { transform: translate(-20px, 20px) scale(0.9); }
-          100% { transform: translate(0px, 0px) scale(1); }
-        }
-        .animate-blob {
-          animation: blob 8s infinite alternate ease-in-out;
-        }
-        .animation-delay-2000 {
-          animation-delay: 2s;
-        }
-        .animation-delay-4000 {
-          animation-delay: 4s;
-        }
-        .animation-delay-6000 {
-          animation-delay: 6s;
-        }
-      `}} />
-
-      {/* --- MOVING COLORS & GLASS EFFECT --- */}
-      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden flex justify-center items-center">
-        <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-blue-300/50 rounded-full mix-blend-multiply filter blur-[80px] animate-blob" />
-        <div className="absolute top-1/3 right-1/4 w-[450px] h-[450px] bg-sky-300/40 rounded-full mix-blend-multiply filter blur-[80px] animate-blob animation-delay-2000" />
-        <div className="absolute bottom-1/4 left-1/3 w-[500px] h-[500px] bg-cyan-300/40 rounded-full mix-blend-multiply filter blur-[80px] animate-blob animation-delay-4000" />
-        <div className="absolute bottom-1/3 right-1/3 w-[400px] h-[400px] bg-blue-400/30 rounded-full mix-blend-multiply filter blur-[80px] animate-blob animation-delay-6000" />
-
-        <div className="absolute inset-0 backdrop-blur-[60px] bg-white/50" />
-        <div className="absolute inset-0 bg-[radial-gradient(#94a3b8_1px,transparent_1px)] [background-size:24px_24px] opacity-40 [mask-image:radial-gradient(ellipse_80%_80%_at_50%_50%,#000_70%,transparent_100%)]" />
-      </div>
+    <div className="relative flex-1 w-full bg-[#F8FAFC] min-h-screen font-sans">
 
       <main className="relative z-10 w-full max-w-5xl mx-auto px-4 pt-16 md:pt-28 pb-12 flex flex-col items-start md:items-center justify-start text-left md:text-center gap-16">
 
