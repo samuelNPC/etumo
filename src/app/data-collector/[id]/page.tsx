@@ -30,8 +30,12 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "responses">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "responses" | "ai_insights">("overview");
   const [isExporting, setIsExporting] = useState(false);
+
+  // 🚨 NEW STATE FOR AI SUMMARY
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
 
   // Authenticate user
   useEffect(() => {
@@ -51,7 +55,6 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
 
     const fetchData = async () => {
       try {
-        // 1. Fetch Instrument & Verify Ownership
         const docRef = doc(db, "instruments", params.id);
         const docSnap = await getDoc(docRef);
 
@@ -70,7 +73,6 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
 
         setInstrument(data);
 
-        // 2. Fetch Responses
         const q = query(
           collection(db, "responses"), 
           where("instrumentId", "==", params.id)
@@ -87,7 +89,6 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
           });
         });
 
-        // Sort by newest first
         fetchedResponses.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
         setResponses(fetchedResponses);
 
@@ -101,19 +102,16 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
     fetchData();
   }, [user, params.id]);
 
-  // 🚨 NEW EXCEL EXPORT LOGIC
   const handleExportExcel = async () => {
     if (!instrument || responses.length === 0) return;
     setIsExporting(true);
 
     try {
-      // 1. Build Headers
       const headers = ["Respondent ID", "Date Submitted"];
       for (let i = 1; i <= instrument.questionCount; i++) {
         headers.push(`Question ${i}`);
       }
 
-      // 2. Build Data Rows
       const data = [headers];
       responses.forEach((r, index) => {
         const rowData = [
@@ -121,26 +119,50 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
           new Date(r.submittedAt).toLocaleDateString()
         ];
         for (let i = 1; i <= instrument.questionCount; i++) {
-          rowData.push(r.answers[i] || ""); // No need to worry about commas or escaping in Excel!
+          rowData.push(r.answers[i] || ""); 
         }
         data.push(rowData);
       });
 
-      // 3. Dynamically import xlsx (keeps initial page load fast)
       const XLSX = await import("xlsx");
       
-      // 4. Create Workbook and Worksheet
       const ws = XLSX.utils.aoa_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Survey Responses");
 
-      // 5. Trigger native Excel download
       XLSX.writeFile(wb, `Etomu_Data_${params.id}.xlsx`);
     } catch (err) {
       alert("Failed to export Excel file.");
       console.error(err);
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  // 🚨 NEW HANDLER TO TRIGGER THE AI API
+  const handleGenerateSummary = async () => {
+    if (!instrument || responses.length === 0) return;
+    setIsGeneratingSummary(true);
+    setAiSummary(null);
+
+    try {
+      const res = await fetch("/api/summarize-responses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          responses,
+          questionCount: instrument.questionCount
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      setAiSummary(data.summary);
+    } catch (err: any) {
+      alert(err.message || "Failed to generate AI insights.");
+    } finally {
+      setIsGeneratingSummary(false);
     }
   };
 
@@ -160,8 +182,8 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
           <span className="text-4xl mb-4 block text-red-500">🔒</span>
           <h1 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h1>
           <p className="text-sm text-gray-500 mb-6">{error}</p>
-          <Link href="/data-collector" className="bg-black text-white px-6 py-3 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-gray-800 transition-colors">
-            Return to Data Collector
+          <Link href="/dashboard" className="bg-black text-white px-6 py-3 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-gray-800 transition-colors">
+            Return to Dashboard
           </Link>
         </div>
       </div>
@@ -175,8 +197,8 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
       <div className="bg-white border-b border-gray-200 p-4 sm:px-8">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <Link href="/data-collector" className="text-xs font-bold text-gray-400 hover:text-black uppercase tracking-widest transition-colors">
-              &larr; Back to Instruments
+            <Link href="/dashboard" className="text-xs font-bold text-gray-400 hover:text-black uppercase tracking-widest transition-colors">
+              &larr; Back to Dashboard
             </Link>
             <h1 className="text-2xl font-black text-gray-900 mt-2 tracking-tight">Instrument Analytics</h1>
             <p className="text-xs text-gray-500 mt-1 font-mono">ID: {params.id}</p>
@@ -232,18 +254,26 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
 
         {/* Content Tabs */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="flex border-b border-gray-200 bg-gray-50">
+          <div className="flex border-b border-gray-200 bg-gray-50 overflow-x-auto hide-scrollbar">
             <button 
               onClick={() => setActiveTab("overview")}
-              className={`flex-1 sm:flex-none px-6 py-4 text-xs font-bold uppercase tracking-widest transition-colors ${activeTab === "overview" ? "bg-white text-[#d97706] border-b-2 border-[#d97706]" : "text-gray-500 hover:bg-gray-100"}`}
+              className={`flex-none px-6 py-4 text-xs font-bold uppercase tracking-widest transition-colors ${activeTab === "overview" ? "bg-white text-[#d97706] border-b-2 border-[#d97706]" : "text-gray-500 hover:bg-gray-100"}`}
             >
               Live Feed
             </button>
             <button 
               onClick={() => setActiveTab("responses")}
-              className={`flex-1 sm:flex-none px-6 py-4 text-xs font-bold uppercase tracking-widest transition-colors ${activeTab === "responses" ? "bg-white text-[#d97706] border-b-2 border-[#d97706]" : "text-gray-500 hover:bg-gray-100"}`}
+              className={`flex-none px-6 py-4 text-xs font-bold uppercase tracking-widest transition-colors ${activeTab === "responses" ? "bg-white text-[#d97706] border-b-2 border-[#d97706]" : "text-gray-500 hover:bg-gray-100"}`}
             >
               Data Grid View
+            </button>
+            {/* 🚨 NEW TAB BUTTON */}
+            <button 
+              onClick={() => setActiveTab("ai_insights")}
+              className={`flex-none px-6 py-4 text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-2 ${activeTab === "ai_insights" ? "bg-white text-blue-600 border-b-2 border-blue-600" : "text-gray-500 hover:bg-gray-100"}`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+              AI Insights (Chap 4)
             </button>
           </div>
 
@@ -258,7 +288,7 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
               </div>
             ) : (
               <>
-                {/* TAB 1: Live Feed (Individual Cards) */}
+                {/* TAB 1: Live Feed */}
                 {activeTab === "overview" && (
                   <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                     {responses.map((resp, idx) => (
@@ -280,7 +310,7 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
                   </div>
                 )}
 
-                {/* TAB 2: Data Grid (Spreadsheet Style) */}
+                {/* TAB 2: Data Grid */}
                 {activeTab === "responses" && (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
@@ -307,6 +337,64 @@ export default function AnalyticsDashboard({ params }: { params: { id: string } 
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+
+                {/* 🚨 TAB 3: AI INSIGHTS */}
+                {activeTab === "ai_insights" && (
+                  <div className="p-6 sm:p-10 bg-blue-50/30">
+                    {!aiSummary && !isGeneratingSummary && (
+                      <div className="text-center py-10">
+                        <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 mb-2">Automate Chapter 4</h3>
+                        <p className="text-gray-500 max-w-md mx-auto mb-8 text-sm">
+                          Let the Etomu Engine analyze your {responses.length} responses. It will identify trends, percentages, and write a structured draft of your Data Presentation chapter.
+                        </p>
+                        <button 
+                          onClick={handleGenerateSummary}
+                          className="bg-blue-600 text-white font-bold py-3 px-8 rounded-xl text-xs uppercase tracking-widest hover:bg-blue-700 transition-colors shadow-md"
+                        >
+                          Generate AI Analysis
+                        </button>
+                      </div>
+                    )}
+
+                    {isGeneratingSummary && (
+                      <div className="text-center py-20">
+                        <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
+                        <p className="text-xs font-bold uppercase tracking-widest text-blue-600 animate-pulse">Running Data Analysis...</p>
+                        <p className="text-xs text-gray-500 mt-2">This may take up to 30 seconds depending on data size.</p>
+                      </div>
+                    )}
+
+                    {aiSummary && (
+                      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 sm:p-10 relative">
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(aiSummary);
+                            alert("Analysis copied to clipboard!");
+                          }}
+                          className="absolute top-6 right-6 bg-gray-100 text-gray-600 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-gray-200 transition-colors"
+                        >
+                          Copy Text
+                        </button>
+                        
+                        <div className="prose prose-blue max-w-none font-serif leading-relaxed text-gray-800 whitespace-pre-wrap mt-8">
+                          {/* Basic markdown parsing to handle headers generated by Gemini */}
+                          {aiSummary.split('\n').map((line, idx) => {
+                            if (line.startsWith('### ')) return <h3 key={idx} className="text-lg font-bold text-gray-900 mt-6 mb-3">{line.replace('### ', '')}</h3>;
+                            if (line.startsWith('## ')) return <h2 key={idx} className="text-xl font-black text-gray-900 mt-8 mb-4">{line.replace('## ', '')}</h2>;
+                            if (line.startsWith('# ')) return <h1 key={idx} className="text-2xl font-black text-blue-900 mt-8 mb-4">{line.replace('# ', '')}</h1>;
+                            if (line.startsWith('**') && line.endsWith('**')) return <p key={idx} className="font-bold text-gray-900 mt-4 mb-2">{line.replace(/\*\*/g, '')}</p>;
+                            if (line.startsWith('- ')) return <li key={idx} className="ml-4 mb-2">{line.replace('- ', '').replace(/\*\*/g, '')}</li>;
+                            if (line.trim() === '') return <br key={idx} />;
+                            return <p key={idx} className="mb-4">{line.replace(/\*\*/g, '')}</p>;
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </>
