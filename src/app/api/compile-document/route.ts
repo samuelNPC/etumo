@@ -293,7 +293,7 @@ export async function POST(req: Request) {
             alignment: docx.AlignmentType.CENTER,
             children: [
               new docx.TextRun({ 
-                text: "⚠️ ETUMO.COM FREE EVALUATION COPY ⚠️", 
+                text: "⚠️ ETOMU.COM FREE EVALUATION COPY ⚠️", 
                 color: "D97706", 
                 bold: true, 
                 size: 22, 
@@ -312,7 +312,7 @@ export async function POST(req: Request) {
           children: [
             ...(isWatermarked ? [
               new docx.TextRun({ 
-                text: "ETUMO.COM FREE EVALUATION COPY - ", 
+                text: "ETOMU.COM FREE EVALUATION COPY - ", 
                 color: "D97706", 
                 bold: true, 
                 size: 20, 
@@ -434,7 +434,7 @@ export async function POST(req: Request) {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "Content-Disposition": `attachment; filename="Etumo_Research_Document.docx"`,
+        "Content-Disposition": `attachment; filename="Etomu_Research_Document.docx"`,
       },
     });
 
