@@ -215,7 +215,7 @@ export default function DashboardPage() {
                     {instruments.length > 0 ? `Monitor live responses for Instrument ID: ${instruments[0].id.substring(0,6)}...` : "Digitize your instrument and deploy a live tracking link."}
                   </p>
                   <div className="mt-6 inline-flex items-center text-xs font-bold uppercase tracking-widest bg-black/20 px-4 py-2.5 rounded-lg backdrop-blur-sm group-hover:bg-black/30 transition-colors border border-black/10">
-                    {instruments.length > 0 ? "View Analytics &rarr;" : "Deploy Link &rarr;"}
+                    {instruments.length > 0 ? "View Analytics →" : "Deploy Link →"}
                   </div>
                 </div>
               </Link>
