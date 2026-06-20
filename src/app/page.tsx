@@ -42,7 +42,7 @@ export default function Home() {
   };
 
   return (
-    <div className="relative flex-1 w-full bg-[#F8FAFC] min-h-screen font-sans">
+    <div className="relative flex-1 w-full bg-[#FAF9F6] min-h-screen font-sans">
 
       <main className="relative z-10 w-full max-w-5xl mx-auto px-4 pt-16 md:pt-28 pb-12 flex flex-col items-start md:items-center justify-start text-left md:text-center gap-16">
 
