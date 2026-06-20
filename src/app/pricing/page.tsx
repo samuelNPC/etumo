@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Pricing | Etumo",
+  title: "Pricing | Etomu",
   description: "Draft your research for free. Only pay on-demand for native document downloads, supervisor corrections, and full Turnitin remediation.",
 };
 
