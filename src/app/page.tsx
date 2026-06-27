@@ -55,8 +55,16 @@ export default function Home() {
             An AI-powered workspace that helps students and writers move from idea to submission-ready research reports faster.
           </p>
 
+          {/* Social Proof / Trust Banner */}
+          <div className="flex items-center gap-3 mb-10 bg-white/60 backdrop-blur-sm border border-gray-200 px-5 py-2.5 rounded-full shadow-sm">
+            <div className="flex -space-x-2">
+              <div className="w-6 h-6 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-blue-700">MUST</div>
+              <div className="w-6 h-6 rounded-full bg-green-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-green-700">KIU</div>
+              <div className="w-6 h-6 rounded-full bg-purple-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-purple-700">KAB</div>
+            </div>
+            <span className="text-sm font-bold text-gray-700">Trusted by students across Uganda</span>
+          </div>
 
-            
           {/* Features: Stacked on mobile, Row on desktop */}
           <div className="flex flex-col md:flex-row items-start md:items-center justify-start md:justify-center gap-5 md:gap-10 text-base font-bold text-gray-800">
             {["Topic Setup", "Chapter Structuring", "Format & Export"].map((feature, idx) => {
@@ -72,8 +80,7 @@ export default function Home() {
               );
             })}
           </div>
-        
-          
+        </div>
 
         {/* --- BOTTOM SECTION: EXPLANATORY CARDS --- */}
         <div className="w-full max-w-xl flex flex-col items-start md:items-center animate-in slide-in-from-bottom-4 fade-in duration-700 delay-100">
@@ -143,8 +150,6 @@ export default function Home() {
             </button>
           </div>
         </div>
-
-
 
       </main>
 
