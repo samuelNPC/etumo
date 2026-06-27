@@ -22,8 +22,8 @@ interface ProjectData {
   faculty: string;
   progress: number;
   isPremium?: boolean; 
-  freeEditsUsed?: number; // Tracks how many times they've hit 'Rewrite'
-  purchasedEditBundles?: number; // Tracks how many 13k packages they bought
+  freeEditsUsed?: number; 
+  purchasedEditBundles?: number; 
   guidelines?: {
     isCustomized: boolean;
     formattingRules: string;
@@ -86,6 +86,9 @@ function WorkspaceContent() {
   const [authCheckLoading, setAuthCheckLoading] = useState<boolean>(true); 
   const [showVerificationGate, setShowVerificationGate] = useState(false);
   const [hasClaimedFreeProject, setHasClaimedFreeProject] = useState(false);
+  
+  // Custom Donation State
+  const [donationAmount, setDonationAmount] = useState<string>("");
 
   const [paymentState, setPaymentState] = useState<{
     isActive: boolean;
@@ -294,7 +297,6 @@ function WorkspaceContent() {
       const res = await fetch("/api/compile-document", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // isPremium dictates whether watermarks are applied directly in your API
         body: JSON.stringify({ projectId, chapterKey, structure: currentStructure, isPremium: project?.isPremium }), 
       });
 
@@ -342,7 +344,6 @@ function WorkspaceContent() {
   const editsUsed = project?.freeEditsUsed || 0;
   const purchasedBundles = project?.purchasedEditBundles || 0;
   
-  // They get 10 free. Plus 20 more for every 13k bundle they purchase.
   const totalAllowedEdits = 10 + (purchasedBundles * 20);
   const editsRemaining = totalAllowedEdits - editsUsed;
 
@@ -369,7 +370,6 @@ function WorkspaceContent() {
       
       setProject(prev => prev ? { ...prev, purchasedEditBundles: newBundles } : null);
       setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
-      // We don't auto-execute here, we let the user click "Apply Corrections" again so they confirm their text
     } catch (error) {
       alert("Failed to update database with new corrections package.");
     }
@@ -412,6 +412,19 @@ function WorkspaceContent() {
     } finally {
       setApplyingCorrection(false);
     }
+  };
+  
+  // --- DONATION LOGIC ---
+  const handleDonate = (amount: number) => {
+    setPaymentState({
+      isActive: true,
+      amount: amount,
+      description: "Donation to keep Etomu Free",
+      onSuccess: () => {
+        setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
+        alert("Thank you so much for your support! You are helping keep Etomu alive for other students.");
+      }
+    });
   };
 
   const closePreview = () => {
@@ -690,6 +703,63 @@ function WorkspaceContent() {
             Download Final DOCX
           </button>
         </div>
+      </div>
+
+      {/* --- DONATION BANNER (FREE TIER ONLY) --- */}
+      {!project.isPremium && (
+        <div className="mt-8 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 p-8 rounded-2xl text-center shadow-sm">
+          <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+            </svg>
+          </div>
+          <h3 className="text-lg font-black text-gray-900 mb-2">Support the Etomu Engine</h3>
+          <p className="text-gray-600 text-sm mb-6 max-w-lg mx-auto leading-relaxed">
+            We pay for server costs, AI generation tokens, and SMS gateways out of pocket to ensure every student gets one free project. If this tool saved you time, consider pitching in to keep it free for the next student.
+          </p>
+          
+          <div className="flex items-center justify-center gap-2 max-w-xs mx-auto">
+            <div className="relative flex-1">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">UGX</span>
+              <input 
+                type="number" 
+                min="1000"
+                step="500"
+                placeholder="5000"
+                value={donationAmount}
+                onChange={(e) => setDonationAmount(e.target.value)}
+                className="w-full bg-white border border-blue-200 text-gray-900 py-3 pl-14 pr-4 rounded-xl outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-bold transition-all"
+              />
+            </div>
+            <button 
+              onClick={() => {
+                const amt = parseInt(donationAmount);
+                if (amt >= 1000) {
+                  handleDonate(amt);
+                  setDonationAmount(""); 
+                } else {
+                  alert("Minimum donation amount is 1,000 UGX to cover network fees.");
+                }
+              }}
+              disabled={!donationAmount || parseInt(donationAmount) < 1000}
+              className="bg-blue-600 text-white font-bold py-3.5 px-6 rounded-xl hover:bg-blue-700 disabled:bg-gray-400 transition-colors shadow-md text-xs uppercase tracking-widest shrink-0"
+            >
+              Donate 💖
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* --- ADD-ON TOOLS NAVIGATION --- */}
+      <div className="mt-8 pt-8 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Link href="/originality" className="flex flex-col border border-yellow-300 bg-yellow-50 p-5 rounded-2xl hover:bg-yellow-100 transition-colors">
+          <span className="text-sm font-bold text-yellow-900 uppercase tracking-widest mb-1">Originality Center</span>
+          <span className="text-xs text-yellow-700 leading-relaxed">Remove similarity and AI percentages with ease.</span>
+        </Link>
+        <Link href="/data-collector" className="flex flex-col border border-orange-300 bg-orange-50 p-5 rounded-2xl hover:bg-orange-100 transition-colors">
+          <span className="text-sm font-bold text-[#d97706] uppercase tracking-widest mb-1">Data Collector &rarr;</span>
+          <span className="text-xs text-orange-700 leading-relaxed">Digitize research instruments and collect field responses.</span>
+        </Link>
       </div>
 
       {previewChapter && (previewChapter === "FULL_DOCUMENT" ? fullDocumentContent : project.content[previewChapter]) && (
