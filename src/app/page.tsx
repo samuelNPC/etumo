@@ -55,8 +55,7 @@ export default function Home() {
             An AI-powered workspace that helps students and writers move from idea to submission-ready research reports faster.
           </p>
 
-{/* Social Proof / Trust Banner */}
-          <div className="flex items-center gap-3 mb-10 bg-white/60 backdrop-blur-sm border border-gray-200 px-5 py-2.5 rounded-full shadow-sm">
+
             
           {/* Features: Stacked on mobile, Row on desktop */}
           <div className="flex flex-col md:flex-row items-start md:items-center justify-start md:justify-center gap-5 md:gap-10 text-base font-bold text-gray-800">
@@ -73,7 +72,7 @@ export default function Home() {
               );
             })}
           </div>
-        </div>
+        
           
 
         {/* --- BOTTOM SECTION: EXPLANATORY CARDS --- */}
