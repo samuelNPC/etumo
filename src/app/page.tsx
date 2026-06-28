@@ -42,7 +42,7 @@ export default function Home() {
   };
 
   return (
-    <div className="relative flex-1 w-full bg-[#E6F2FF] min-h-screen font-sans">
+    <div className="relative flex-1 w-full bg-white min-h-screen font-sans">
 
       <main className="relative z-10 w-full max-w-5xl mx-auto px-4 pt-16 md:pt-28 pb-12 flex flex-col items-start md:items-center justify-start text-left md:text-center gap-16">
 
@@ -56,7 +56,7 @@ export default function Home() {
           </p>
 
           {/* Social Proof / Trust Banner */}
-          <div className="flex items-center gap-3 mb-10 bg-white/60 backdrop-blur-sm border border-gray-200 px-5 py-2.5 rounded-full shadow-sm">
+          <div className="flex items-center gap-3 mb-10 cursor-default opacity-90">
             <div className="flex -space-x-2">
               <div className="w-6 h-6 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-blue-700">MUST</div>
               <div className="w-6 h-6 rounded-full bg-green-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-green-700">KIU</div>
@@ -67,15 +67,19 @@ export default function Home() {
 
           {/* Features: Stacked on mobile, Row on desktop */}
           <div className="flex flex-col md:flex-row items-start md:items-center justify-start md:justify-center gap-5 md:gap-10 text-base font-bold text-gray-800">
-            {["Topic Setup", "Chapter Structuring", "Format & Export"].map((feature, idx) => {
+            {[
+              { text: "Topic Setup", color: "bg-blue-500" },
+              { text: "Chapter Structuring", color: "bg-yellow-500" },
+              { text: "Format & Export", color: "bg-red-500" }
+            ].map((feature, idx) => {
               return (
                 <span key={idx} className="flex items-center gap-3">
-                  <span className="flex items-center justify-center w-6 h-6 bg-blue-500 text-white rounded-sm shadow-sm">
+                  <span className={`flex items-center justify-center w-6 h-6 ${feature.color} text-white rounded-sm shadow-sm`}>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3.5} d="M5 13l4 4L19 7" />
                     </svg>
                   </span>
-                  {feature}
+                  {feature.text}
                 </span>
               );
             })}
@@ -92,10 +96,10 @@ export default function Home() {
             {/* Card 1: Workspace / Get Started */}
             <button 
               onClick={() => handleActionClick("/workspace")}
-              className="group w-full text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-blue-400 hover:shadow-xl transition-all duration-300 flex items-center justify-between gap-4"
+              className="group w-full text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-blue-600 hover:shadow-xl transition-all duration-300 flex items-center justify-between gap-4"
             >
               <div className="flex-1">
-                <h3 className="font-bold text-xl text-gray-900 mb-2 group-hover:text-blue-600 transition-colors flex items-center gap-2">
+                <h3 className="font-bold text-xl text-blue-600 mb-2 transition-colors flex items-center gap-2">
                   Get Started <span className="text-[10px] font-bold uppercase tracking-widest text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md hidden sm:inline-block">Workspace</span>
                 </h3>
                 <p className="text-sm text-gray-600 font-medium leading-relaxed">
@@ -112,10 +116,10 @@ export default function Home() {
             {/* Card 2: Originality Center */}
             <button 
               onClick={() => router.push("/originality")} 
-              className="group w-full text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-cyan-500 hover:shadow-xl transition-all duration-300 flex items-center justify-between gap-4"
+              className="group w-full text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-cyan-600 hover:shadow-xl transition-all duration-300 flex items-center justify-between gap-4"
             >
               <div className="flex-1">
-                <h3 className="font-bold text-xl text-gray-900 mb-2 group-hover:text-cyan-600 transition-colors flex items-center gap-2">
+                <h3 className="font-bold text-xl text-cyan-600 mb-2 transition-colors flex items-center gap-2">
                   Originality Center <span className="text-[10px] font-bold uppercase tracking-widest text-cyan-600 bg-cyan-50 border border-cyan-100 px-2 py-0.5 rounded-md hidden sm:inline-block">Similarity Repair</span>
                 </h3>
                 <p className="text-sm text-gray-600 font-medium leading-relaxed">
@@ -135,7 +139,7 @@ export default function Home() {
               className="group w-full text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-[#d97706] hover:shadow-xl transition-all duration-300 flex items-center justify-between gap-4"
             >
               <div className="flex-1">
-                <h3 className="font-bold text-xl text-gray-900 mb-2 group-hover:text-[#d97706] transition-colors flex items-center gap-2">
+                <h3 className="font-bold text-xl text-[#d97706] mb-2 transition-colors flex items-center gap-2">
                   Data Collector <span className="text-[10px] font-bold uppercase tracking-widest text-[#d97706] bg-orange-50 border border-orange-100 px-2 py-0.5 rounded-md hidden sm:inline-block">Digitize Fieldwork</span>
                 </h3>
                 <p className="text-sm text-gray-600 font-medium leading-relaxed">
