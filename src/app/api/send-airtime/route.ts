@@ -36,10 +36,10 @@ export async function POST(req: NextRequest) {
     const response = await airtime.send({
       recipients: [
   {
-    phoneNumber: "+256759997376",
-    currencyCode: "UGX",
-    amount: `UGX ${amount}`,
-  },
+  phoneNumber: "+256759997376",
+  currencyCode: "UGX",
+  amount: Number(amount),
+},
 ],
     });
 
