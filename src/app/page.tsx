@@ -13,7 +13,7 @@ export default function Home() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
 
-  // Track Auth State (Restored your original working logic)
+  // Track Auth State
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -46,23 +46,24 @@ export default function Home() {
 
       <main className="relative z-10 w-full max-w-5xl mx-auto px-4 pt-16 md:pt-28 pb-12 flex flex-col items-start md:items-center justify-start text-left md:text-center gap-16">
 
-        {/* --- TOP SECTION: VALUE PROPOSITION --- */}
+        {/* --- TOP SECTION: VALUE PROPOSITION (Upgraded Hero) --- */}
         <div className="w-full flex flex-col items-start md:items-center animate-in slide-in-from-bottom-4 fade-in duration-700">
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black mb-6 tracking-tighter text-[#0f172a] leading-[1.1]">
+          
+          <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[5rem] font-black mb-6 tracking-tighter text-[#0f172a] leading-[1.05]">
             Where research gets done.
           </h1>
-          <p className="text-base sm:text-lg md:text-xl text-gray-700 mb-8 max-w-2xl font-medium leading-relaxed">
+          <p className="text-lg sm:text-xl md:text-2xl text-gray-700 mb-12 max-w-3xl font-medium leading-relaxed">
             An AI-powered workspace that helps students and writers move from idea to submission-ready research reports faster.
           </p>
 
-          {/* Social Proof / Trust Banner */}
-          <div className="flex items-center gap-3 mb-10 cursor-default opacity-90">
-            <div className="flex -space-x-2">
-              <div className="w-6 h-6 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-blue-700">MUST</div>
-              <div className="w-6 h-6 rounded-full bg-green-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-green-700">KIU</div>
-              <div className="w-6 h-6 rounded-full bg-purple-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-purple-700">KAB</div>
+          {/* Expanded Social Proof / Trust Banner */}
+          <div className="w-full max-w-3xl bg-gray-100 rounded-3xl p-6 sm:p-10 mb-12 flex flex-col items-center justify-center gap-6 cursor-default">
+            <div className="flex items-center justify-between w-full gap-3 sm:gap-6">
+              <div className="flex-1 py-4 sm:py-6 rounded-2xl bg-white border border-gray-200 flex items-center justify-center text-sm sm:text-xl font-black text-blue-700 tracking-widest shadow-sm">MUST</div>
+              <div className="flex-1 py-4 sm:py-6 rounded-2xl bg-white border border-gray-200 flex items-center justify-center text-sm sm:text-xl font-black text-green-700 tracking-widest shadow-sm">KIU</div>
+              <div className="flex-1 py-4 sm:py-6 rounded-2xl bg-white border border-gray-200 flex items-center justify-center text-sm sm:text-xl font-black text-purple-700 tracking-widest shadow-sm">KAB</div>
             </div>
-            <span className="text-sm font-bold text-gray-700">Trusted by students across Uganda</span>
+            <span className="text-xs sm:text-sm font-extrabold text-gray-500 uppercase tracking-widest text-center">Trusted by students across Uganda</span>
           </div>
 
           {/* Features: Stacked on mobile, Row on desktop */}
@@ -96,7 +97,7 @@ export default function Home() {
             {/* Card 1: Workspace / Get Started */}
             <button 
               onClick={() => handleActionClick("/workspace")}
-              className="group w-full text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-blue-600 hover:shadow-xl transition-all duration-300 flex items-center justify-between gap-4"
+              className="group w-full text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-black/20 rounded-xl shadow-lg hover:border-blue-600 hover:shadow-xl transition-all duration-300 flex items-center justify-between gap-4"
             >
               <div className="flex-1">
                 <h3 className="font-bold text-xl text-blue-600 mb-2 transition-colors flex items-center gap-2">
@@ -116,7 +117,7 @@ export default function Home() {
             {/* Card 2: Originality Center */}
             <button 
               onClick={() => router.push("/originality")} 
-              className="group w-full text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-cyan-600 hover:shadow-xl transition-all duration-300 flex items-center justify-between gap-4"
+              className="group w-full text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-black/20 rounded-xl shadow-lg hover:border-cyan-600 hover:shadow-xl transition-all duration-300 flex items-center justify-between gap-4"
             >
               <div className="flex-1">
                 <h3 className="font-bold text-xl text-cyan-600 mb-2 transition-colors flex items-center gap-2">
@@ -136,7 +137,7 @@ export default function Home() {
             {/* Card 3: Data Collector */}
             <button 
               onClick={() => handleActionClick("/data-collector")}
-              className="group w-full text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-white/60 rounded-xl shadow-lg hover:border-[#d97706] hover:shadow-xl transition-all duration-300 flex items-center justify-between gap-4"
+              className="group w-full text-left p-6 sm:p-8 bg-white/80 backdrop-blur-md border border-black/20 rounded-xl shadow-lg hover:border-[#d97706] hover:shadow-xl transition-all duration-300 flex items-center justify-between gap-4"
             >
               <div className="flex-1">
                 <h3 className="font-bold text-xl text-[#d97706] mb-2 transition-colors flex items-center gap-2">
