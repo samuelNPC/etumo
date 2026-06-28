@@ -56,16 +56,6 @@ export default function Home() {
             An AI-powered workspace that helps students and writers move from idea to submission-ready research reports faster.
           </p>
 
-          {/* Expanded Social Proof / Trust Banner */}
-          <div className="w-full max-w-3xl bg-gray-100 rounded-3xl p-6 sm:p-10 mb-12 flex flex-col items-center justify-center gap-6 cursor-default">
-            <div className="flex items-center justify-between w-full gap-3 sm:gap-6">
-              <div className="flex-1 py-4 sm:py-6 rounded-2xl bg-white border border-gray-200 flex items-center justify-center text-sm sm:text-xl font-black text-blue-700 tracking-widest shadow-sm">MUST</div>
-              <div className="flex-1 py-4 sm:py-6 rounded-2xl bg-white border border-gray-200 flex items-center justify-center text-sm sm:text-xl font-black text-green-700 tracking-widest shadow-sm">KIU</div>
-              <div className="flex-1 py-4 sm:py-6 rounded-2xl bg-white border border-gray-200 flex items-center justify-center text-sm sm:text-xl font-black text-purple-700 tracking-widest shadow-sm">KAB</div>
-            </div>
-            <span className="text-xs sm:text-sm font-extrabold text-gray-500 uppercase tracking-widest text-center">Trusted by students across Uganda</span>
-          </div>
-
           {/* Features: Stacked on mobile, Row on desktop */}
           <div className="flex flex-col md:flex-row items-start md:items-center justify-start md:justify-center gap-5 md:gap-10 text-base font-bold text-gray-800">
             {[
