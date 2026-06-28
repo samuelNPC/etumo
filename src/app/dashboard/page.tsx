@@ -125,7 +125,7 @@ export default function DashboardPage() {
               Collect Data
             </Link>
             <Link 
-              href="/"
+              href="/workspace"
               className="bg-black text-white font-bold py-3 px-6 rounded-xl text-xs uppercase tracking-widest hover:bg-gray-800 transition-colors shadow-md flex items-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" /></svg>
