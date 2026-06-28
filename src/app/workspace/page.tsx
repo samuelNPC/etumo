@@ -21,7 +21,7 @@ interface ProjectData {
   faculty: string;
   progress: number;
   freeEditsUsed?: number; 
-  unlockedChapters?: string[]; // Array of chapter keys they paid 67k for
+  unlockedChapters?: string[]; // Array of chapter keys they paid 14k for
   hasPaidFullExport?: boolean; // True if they paid the 54k
   guidelines?: {
     isCustomized: boolean;
@@ -250,7 +250,7 @@ function WorkspaceContent() {
       const currentLabel = currentStructure.find(c => c.key === chapterKey)?.label || "Chapter";
       setPaymentState({
         isActive: true,
-        amount: 67000,
+        amount: 14000,
         description: `Unlock ${currentLabel} Native Download`,
         onSuccess: () => {
           setPaymentState({ isActive: false, amount: 0, description: "", onSuccess: () => {} });
@@ -623,7 +623,7 @@ function WorkspaceContent() {
                         className={`${isUnlocked ? 'bg-[#d97706] hover:bg-[#b45309]' : 'bg-black hover:bg-gray-800'} text-white px-4 py-2.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors shadow-sm flex items-center gap-1`}
                       >
                         {!isUnlocked && <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>}
-                        {isUnlocked ? "Download" : "Unlock (67k)"}
+                        {isUnlocked ? "Download" : "Unlock (14k)"}
                       </button>
                     </div>
                   ) : (
